@@ -31,6 +31,14 @@ def main():
         parser.error(str(error))
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(config, indent=2) + '\n')
+    # Pages rejects --config; run from this generated project directory instead.
+    # Keep Functions pointed at reviewed source without copying or changing it.
+    functions = output.parent / 'functions'
+    if functions.exists() or functions.is_symlink():
+        if not functions.is_symlink() or functions.resolve() != ROOT / 'functions':
+            parser.error('Temporary Functions path already exists with different contents')
+    else:
+        functions.symlink_to(ROOT / 'functions', target_is_directory=True)
     print(output)
 
 

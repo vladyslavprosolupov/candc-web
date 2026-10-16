@@ -200,7 +200,9 @@ Worker hooks, storage reads, timers, frame sampling or uploads run while off.
 To opt in, compile with `GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh`, export
 with `npm run export -- --diagnostics`, then generate an ignored deployment
 config with `python3 scripts/diagnostics-deployment-config.py`. The generated
-config sets `DIAGNOSTICS_ENABLED` to the exact string `true` for the same existing
+config and Functions symlink form a temporary local project directory (Pages
+rejects custom `--config` paths). Run Wrangler with the generated directory as
+its working directory. The config sets `DIAGNOSTICS_ENABLED` to the exact string `true` for the same existing
 Pages project. The versioned base config explicitly sets it to `false`. Both the client
 export and server gate must be enabled. This uses the same existing project;
 it does not change Access policies, permitted identities or storage access.
@@ -303,7 +305,7 @@ GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh
 npm run export -- --diagnostics
 python3 scripts/diagnostics-deployment-config.py
 # Only after reviewing this candidate:
-.local/cloudflare-cli/node_modules/.bin/wrangler pages deploy release --config .local/debug-deployment/wrangler.jsonc --project-name candc-web --branch main
+.local/cloudflare-cli/node_modules/.bin/wrangler --cwd .local/debug-deployment pages deploy "$PWD/release" --project-name candc-web --branch main
 ```
 
 Historical validation of the earlier production collector (before the fixes
