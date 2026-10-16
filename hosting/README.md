@@ -385,7 +385,8 @@ SDL enqueue failures or queue invariant errors. Simulation and manual input
 continued. This is a bounded comparison against the earlier same-map heap
 growth, not a guarantee for all longer sessions. Final binary `e8385a5e5b0b`
 adds only the separately tested shutdown-order fix; active behavior is unchanged.
-A final startup/input smoke is required before publishing.
+Final Chrome smoke passed Play, intro/Esc, single-player submenu clicks, healthy
+SDL/audio snapshots and acknowledged manual reporting.
 
 A default-OFF engine build independently omits the generated telemetry bridge
 and both SDL probe symbols while retaining real pthread synchronization.

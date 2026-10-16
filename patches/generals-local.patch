@@ -2082,10 +2082,10 @@ index 33bd5b8..95d91d4 100644
      # Before SDL3_image build: force PNG discovery to platform-specific libpng
 diff --git a/docs/DEV_BLOG/2026-10-DIARY.md b/docs/DEV_BLOG/2026-10-DIARY.md
 new file mode 100644
-index 0000000..885aaa8
+index 0000000..15eef3d
 --- /dev/null
 +++ b/docs/DEV_BLOG/2026-10-DIARY.md
-@@ -0,0 +1,291 @@
+@@ -0,0 +1,292 @@
 +# Development Diary — October 2026
 +
 +## 2026-10-16: Validate the repaired game in Chrome
@@ -2096,7 +2096,8 @@ index 0000000..885aaa8
 +  enqueue failures/queue invariant errors stayed zero while input worked.
 +- The final e8385a5e5b0b binary differs only by the separately tested shutdown
 +  order. Record the bounded session evidence without claiming all longer
-+  sessions are proven; final startup/input smoke remains the deployment gate.
++  sessions are proven. Final Chrome smoke passed startup, intro/Esc, menu clicks,
++  healthy SDL/audio snapshots and acknowledged manual reporting.
 +
 +## 2026-10-16: Release audio resources before context shutdown
 +
@@ -2379,10 +2380,10 @@ index 0000000..885aaa8
 +tests and six Node tests pass. Campaign completion and multiplayer are untested.
 diff --git a/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md b/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md
 new file mode 100644
-index 0000000..b2a7be5
+index 0000000..ac8c06d
 --- /dev/null
 +++ b/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md
-@@ -0,0 +1,150 @@
+@@ -0,0 +1,152 @@
 +# Browser input freeze investigation — 16 October 2026
 +
 +## Failure boundary and mechanism
@@ -2531,8 +2532,10 @@ index 0000000..b2a7be5
 +The final binary `e8385a5e5b0b` adds only the separately tested shutdown-order
 +fix to that soak candidate: it destroys cached audio before closing the context.
 +Active-game code and telemetry are unchanged between those two builds. Final
-+startup/input smoke testing is required before deployment. Default-OFF build
-+checks, actual-library regressions and Pages Functions bundling also pass.
++Chrome smoke passed: Play, intro, Esc to the main menu, single-player submenu
++clicks, healthy SDL/audio snapshots and an acknowledged manual diagnostic
++report. Default-OFF build checks, actual-library regressions and Pages Functions
++bundling also pass.
 diff --git a/resources/gitinfo/git_watcher.cmake b/resources/gitinfo/git_watcher.cmake
 index 40ae042..4ce5f09 100644
 --- a/resources/gitinfo/git_watcher.cmake
