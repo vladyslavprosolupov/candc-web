@@ -16,10 +16,24 @@ OUT = ROOT / 'release'
 def diagnostics_config(enabled=False):
     return '// TEMPORARY diagnostics: explicit export opt-in.\nwindow.gxDiagnosticsConfig = Object.freeze({enabled: ' + ('true' if enabled else 'false') + '});\n'
 
+def validate_diagnostics_build(build, requested=False):
+    """Bind the compile gate to the exact successful WASM build before exporting."""
+    try:
+        manifest = json.loads((build / 'web-diagnostics-build.json').read_text())
+    except (OSError, ValueError) as error:
+        raise SystemExit('Build the engine with scripts/build.sh before exporting') from error
+    digest = hashlib.sha256((build / 'GeneralsMD/GeneralsXZH.wasm').read_bytes()).hexdigest()
+    if manifest.get('wasmSha256') != digest or type(manifest.get('enabled')) is not bool:
+        raise SystemExit('Engine build manifest is stale; rebuild before exporting')
+    if requested and not manifest['enabled']:
+        raise SystemExit('--diagnostics requires GX_WEB_DIAGNOSTICS=ON bash scripts/build.sh')
+    return manifest['enabled']
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--diagnostics', action='store_true', help='Enable temporary input-freeze diagnostics (server gate also required)')
     args = parser.parse_args()
+    compiled_diagnostics = validate_diagnostics_build(ENGINE / 'build/emscripten', args.diagnostics)
     OUT.mkdir(exist_ok=True)
     # No broad dist copy: dist/assets contains the private game installation.
     for path in (ENGINE / 'web/shell').glob('*.js'):
@@ -33,7 +47,7 @@ def main():
     subprocess.run([str(ROOT / '.tools/emsdk/upstream/bin/wasm-opt'), '--all-features', '--strip-debug',
                     str(ENGINE / 'build/emscripten/GeneralsMD/GeneralsXZH.wasm'), '-o', str(OUT / 'GeneralsXZH.wasm')], check=True)
     digest = hashlib.sha256((OUT / 'GeneralsXZH.wasm').read_bytes()).hexdigest()[:12]
-    (OUT / 'build.json').write_text(json.dumps({'buildId': digest}) + '\n')
+    (OUT / 'build.json').write_text(json.dumps({'buildId': digest, 'diagnosticsCompiled': compiled_diagnostics, 'diagnosticsEnabled': args.diagnostics}) + '\n')
     (OUT / 'assets').mkdir(exist_ok=True)
     # Host operators may edit this after export to opt into their own asset server.
     (OUT / 'assets/builds.json').write_text('[]\n')
@@ -64,7 +78,7 @@ def main():
                 for path in (ROOT / folder).rglob('*'):
                     if path.is_file() and '__pycache__' not in path.parts:
                         tar.add(path, arcname='generals-web/' + str(path.relative_to(ROOT)), recursive=False)
-            for name in ['README.md', 'package.json', 'package-lock.json', 'wrangler.jsonc']:
+            for name in ['README.md', 'package.json', 'package-lock.json', 'wrangler.jsonc', 'engine-version.json']:
                 tar.add(ROOT / name, arcname='generals-web/' + name)
             # Bundled dependency source and notices; omit checkout metadata and build outputs.
             for dep in (ENGINE / 'build/emscripten/_deps').glob('*-src'):

@@ -10,6 +10,8 @@ fi
 source .tools/emsdk/emsdk_env.sh
 export EMSCRIPTEN_ROOT="$ROOT/.tools/emsdk/upstream/emscripten"
 FFMPEG_DIR="$(python3 -c 'import hashlib, pathlib, tempfile; p=str(pathlib.Path.cwd()); print(pathlib.Path(tempfile.gettempdir()) / ("generals-ffmpeg-" + hashlib.sha256(p.encode()).hexdigest()[:12]))')"
-cmake --preset emscripten -S engine -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DFFMPEG_EM_PREFIX="$FFMPEG_DIR"
+cmake --preset emscripten -S engine -DGX_WEB_INPUT_DIAGNOSTICS="${GX_WEB_DIAGNOSTICS:-OFF}" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DFFMPEG_EM_PREFIX="$FFMPEG_DIR"
 cmake --build engine/build/emscripten --target z_generals -j "${BUILD_JOBS:-8}"
+# Record the successful binary mode and hash; failed builds cannot masquerade as ready.
+python3 scripts/write-build-manifest.py engine/build/emscripten
 engine/scripts/web/make-dist.sh --skip-assets

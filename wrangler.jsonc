@@ -3,6 +3,14 @@
   "name": "candc-web",
   "pages_build_output_dir": "./release",
   "compatibility_date": "2026-10-16",
-  "r2_buckets": [{"binding": "DIAGNOSTICS", "bucket_name": "candc-web-diagnostics"}],
-  "vars": {"ACCESS_AUD": "ae62cea92dcdbd83ea5b1ff5d4b3212d640ce3bc2eadc775297223ddfbe3a564"}
+  "r2_buckets": [
+    {
+      "binding": "DIAGNOSTICS",
+      "bucket_name": "candc-web-diagnostics"
+    }
+  ],
+  "vars": {
+    "ACCESS_AUD": "ae62cea92dcdbd83ea5b1ff5d4b3212d640ce3bc2eadc775297223ddfbe3a564",
+    "DIAGNOSTICS_ENABLED": "false"
+  }
 }

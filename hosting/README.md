@@ -192,12 +192,16 @@ managed matchmaking/TURN service. Single-player hosting needs neither.
 
 Diagnostics are temporary investigation code and **off by default**. Normal
 `npm run export` writes `diagnostics-config.js` with `enabled: false`. Source
-launches also default off. No diagnostics input listeners, hotkey, console or
+launches also default off. A normal build leaves `GX_WEB_INPUT_DIAGNOSTICS=OFF`
+and compiles out the C++/SDL probes; exporting without the flag also disables the
+browser collector when using a previously instrumented binary. No diagnostics input listeners, hotkey, console or
 Worker hooks, storage reads, timers, frame sampling or uploads run while off.
 
 To opt in, compile with `GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh`, export
-with `npm run export -- --diagnostics`, and set the existing Pages project's
-`DIAGNOSTICS_ENABLED` variable to the exact string `true`. Both the client
+with `npm run export -- --diagnostics`, then generate an ignored deployment
+config with `python3 scripts/diagnostics-deployment-config.py`. The generated
+config sets `DIAGNOSTICS_ENABLED` to the exact string `true` for the same existing
+Pages project. The versioned base config explicitly sets it to `false`. Both the client
 export and server gate must be enabled. This uses the same existing project;
 it does not change Access policies, permitted identities or storage access.
 Default/missing server configuration rejects POSTs with HTTP 410 before
@@ -207,7 +211,10 @@ authentication or storage. Authenticated players can read
 An enabled client checks server configuration immediately and every 30 seconds.
 Restored chunks cannot upload before the server confirms it is enabled. Set
 `DIAGNOSTICS_ENABLED=false` to stop writes immediately; clients stop collecting
-at their next configuration check or HTTP 410 response. `gxDiagnostics.disable()`
+at their next configuration check or HTTP 410 response. Older already-open
+collector versions without a kill switch cannot be retroactively unhooked by a
+server setting; server rejection still blocks their writes, and reload closes
+the old collector lifecycle. `gxDiagnostics.disable()`
 also stops a running client immediately. Teardown restores console and Worker
 constructors, removes listeners, cancels timers and frame callbacks, disconnects
 the performance observer, aborts pending requests, clears queued chunks and
@@ -238,10 +245,17 @@ automatically uploaded earlier chunks remain available.
 Data includes engine build, browser/device capabilities, map, simulation/client
 frames, focus, fullscreen, pointer lock, GUI capture/grab/focus window IDs, input
 enabled/paused flags, mouse button states, SDL event counters and dropped input,
-heap size, browser frame gaps/long tasks, and bounded console/error messages.
+actual WASM heap size, dlmalloc usage sampled every 30 seconds, JS heap size,
+browser frame gaps/long tasks, and bounded console/error messages. SDL probes
+include queue counts/head/tail presence, enqueue failures, filter rejections,
+poll calls, enabled input types, missing-window returns and separate bounded
+worker/main-thread SDL errors. Probes never clear errors, dequeue additional
+events, reset queues or attempt input recovery.
 Key values, text input, cookies, tokens, save files and game assets are not
 collected. Error strings are truncated and common secrets/URL queries redacted.
-Known per-frame engine spam is sampled and excess messages are counted.
+Known verbose font and nonerror INI traces are removed at their C++ producers;
+remaining log storms are bounded and counted. Recent engine/browser snapshots
+are preferentially retained when interaction events fill the ring.
 
 Each chunk is at most 48 KiB. The rolling history is bounded to 256 events /
 36 KiB, and the retry queue to 16 chunks. Chunks overlap; use event timestamps
@@ -284,11 +298,13 @@ Deploy from the repository root using `wrangler.jsonc` and `npm ci`:
 npm test
 GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh
 npm run export -- --diagnostics
-# Set DIAGNOSTICS_ENABLED=true in the existing Pages project before opting in.
-.local/cloudflare-cli/node_modules/.bin/wrangler pages deploy release --project-name candc-web --branch main
+python3 scripts/diagnostics-deployment-config.py
+# Only after reviewing this candidate:
+.local/cloudflare-cli/node_modules/.bin/wrangler pages deploy release --config .local/debug-deployment/wrangler.jsonc --project-name candc-web --branch main
 ```
 
-Validation on 16 October 2026: eight Python and 39 Node tests pass, including
+Historical validation of the earlier production collector (before the fixes
+below), 16 October 2026: eight Python and 39 Node tests passed, including
 executing the actual Emscripten-generated telemetry bridge and an old-bootstrap
 fallback. WASM and Pages Function builds pass. Production deployment:
 https://18305f1b.candc-web.pages.dev (engine build `4c528831e918`, collector
@@ -300,3 +316,28 @@ and deployment API redirect to Access. Public R2 access is disabled. The initial
 instrumentation deployment was rolled back after discovering an EM_ASM argument
 limit; the repaired bridge is tested and contains collector exceptions. Browser
 smoke testing covers startup/intro/menu, not reproduction of the original freeze.
+
+
+### Disable and remove the temporary investigation code
+
+1. Deploy the base `wrangler.jsonc` with `DIAGNOSTICS_ENABLED=false` first. It
+   rejects new writes; enabled current collectors tear down after their next
+   configuration poll or HTTP 410. Reload older collector tabs.
+2. Build with `GX_WEB_DIAGNOSTICS=OFF bash scripts/build.sh` and run
+   `npm run export` without `--diagnostics`. Verify the build manifest is false,
+   the generated engine has no `window.gxDiagnostics.engine` bridge, and SDL
+   lacks `SDL_GXGetInputDiagnostics` / `SDL_GXSetInputDiagnosticsEnabled` symbols.
+   The manifest binds its compile mode to the exact successful WASM hash;
+   `--diagnostics` rejects a compiled-off or stale binary.
+3. Review and revert the dedicated temporary telemetry commits in both repos,
+   retaining permanent logging, WebGL ownership/cache and SDL pthread fixes.
+   Remove diagnostics scripts/config/includes/probe call sites, the maintained
+   SDL diagnostics patch/apply hook, endpoint/route and its deployment binding
+   when reports are no longer needed. Rebuild SDL from a fresh dependency source
+   after removing the maintained patch. Existing private reports continue to
+   expire under the 14-day policy; no publication or retention change is needed.
+
+`engine-version.json` records the independent engine baseline and current source
+commit. Exported source includes it, the maintained SDL patch and regression
+harnesses. See the engine investigation report for the race reproducer and
+permanent fixes; no recovery watchdog is installed.
