@@ -12,5 +12,19 @@
   "vars": {
     "ACCESS_AUD": "ae62cea92dcdbd83ea5b1ff5d4b3212d640ce3bc2eadc775297223ddfbe3a564",
     "DIAGNOSTICS_ENABLED": "false"
+  },
+  "env": {
+    "production": {
+      "vars": {
+        "ACCESS_AUD": "ae62cea92dcdbd83ea5b1ff5d4b3212d640ce3bc2eadc775297223ddfbe3a564",
+        "DIAGNOSTICS_ENABLED": "true"
+      },
+      "r2_buckets": [
+        {
+          "binding": "DIAGNOSTICS",
+          "bucket_name": "candc-web-diagnostics"
+        }
+      ]
+    }
   }
 }
