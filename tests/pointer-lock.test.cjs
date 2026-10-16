@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const source = fs.readFileSync('engine/web/shell/pointer-lock.js', 'utf8');
-function setup() {
+function setup(includeFullscreen = false) {
   function target(extra = {}) {
     const handlers = {};
     return Object.assign({style:{}, hidden:false, attributes:{},
@@ -23,6 +23,7 @@ function setup() {
   canvas.requestPointerLock=async()=>{requests++;document.pointerLockElement=canvas;document.emit('pointerlockchange');};
   const window=target();
   vm.runInNewContext(source,{window,document,console,MutationObserver:class{constructor(f){observer=f;}observe(){}}});
+  if (includeFullscreen) withFullscreen({window,document,canvas,requests:()=>requests});
   window.emit('DOMContentLoaded');
   const api=window.gxPointerLock;
   const ready=()=>{overlay.style.display='none';api.frame(400,300,800,600);};
@@ -37,9 +38,9 @@ test('launcher never captures the mouse, even when fullscreen',async()=>{
   await s.api.request(true);s.window.emit('pointerdown',s.event());
   assert.equal(s.requests(),0);assert.equal(s.cursor.hidden,true);
 });
-test('windowed play remains normal; entering fullscreen can request lock synchronously',async()=>{
+test('windowed play never captures the mouse, including stale fullscreen-entry requests',async()=>{
   const s=setup();s.ready();await s.api.request();assert.equal(s.requests(),0);
-  await s.api.request(true);assert.equal(s.requests(),1);assert.equal(s.document.pointerLockElement,s.canvas);
+  await s.api.request(true);assert.equal(s.requests(),0);assert.equal(s.document.pointerLockElement,null);
 });
 test('activation click and release are consumed; subsequent clicks reach SDL',async()=>{
   const s=setup();s.ready();s.document.fullscreenElement={};
@@ -82,4 +83,51 @@ test('denied permission is visible and can be retried',async()=>{
 test('original three-pixel edge scrolling is unchanged',()=>{
   const cpp=fs.readFileSync('engine/GeneralsMD/Code/GameEngine/Source/GameClient/MessageStream/LookAtXlat.cpp','utf8');
   assert.match(cpp,/static const Int edgeScrollSize = 3;/);
+});
+
+// Exercise both controllers together: fullscreen owns its gesture; mouse capture
+// gets the next deliberate canvas gesture after fullscreen has actually opened.
+function withFullscreen(s) {
+  s.canvas.focus=()=>{};
+  s.document.documentElement={requestFullscreen:async()=>{
+    assert.equal(s.requests(),0,'fullscreen must be requested before any mouse capture');
+    s.document.fullscreenElement=s.document.documentElement;
+    s.document.emit('fullscreenchange');
+  }};
+  s.document.exitFullscreen=async()=>{
+    s.document.fullscreenElement=null;
+    s.document.emit('fullscreenchange');
+  };
+  vm.runInNewContext(fs.readFileSync('engine/web/shell/fullscreen.js','utf8'),
+    {window:s.window,document:s.document,console});
+}
+test('fullscreen succeeds before canvas gesture captures the pointer',async()=>{
+  const s=setup(true);s.ready();
+  s.button.emit('click',{stopPropagation(){}});await settle();
+  assert.equal(s.document.fullscreenElement,s.document.documentElement);
+  assert.equal(s.document.pointerLockElement,null);
+  assert.notEqual(s.button.style.visibility,'hidden');
+  const down=s.event();s.window.emit('pointerdown',down);await settle();
+  assert.equal(s.requests(),1);assert.equal(s.document.pointerLockElement,s.canvas);
+  assert.ok(down.prevented&&down.stopped);
+});
+test('refused fullscreen never captures the pointer or hides the control',async()=>{
+  const s=setup(true);s.ready();
+  s.document.documentElement.requestFullscreen=async()=>{throw Error('Fullscreen denied');};
+  s.button.emit('click',{stopPropagation(){}});await settle();
+  assert.equal(s.requests(),0);assert.equal(s.document.pointerLockElement,null);
+  assert.notEqual(s.button.style.visibility,'hidden');
+  assert.match(s.status.textContent,/Браузер не разрешил полный экран/);
+});
+test('pointer lock granted after fullscreen exit is immediately released',async()=>{
+  const s=setup();s.ready();s.document.fullscreenElement={};
+  let grant;
+  s.canvas.requestPointerLock=()=>new Promise(resolve=>{grant=()=>{
+    s.document.pointerLockElement=s.canvas;s.document.emit('pointerlockchange');resolve();
+  };});
+  const pending=s.api.request();
+  s.document.fullscreenElement=null;s.document.emit('fullscreenchange');
+  grant();await pending;
+  assert.equal(s.document.pointerLockElement,null);assert.equal(s.exits(),1);
+  assert.equal(s.cursor.hidden,true);assert.notEqual(s.button.style.visibility,'hidden');
 });
