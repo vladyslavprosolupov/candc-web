@@ -106,12 +106,33 @@ Public R2 access was explicitly approved by the owner for this bucket. The
 for production traffic ([R2 public buckets](https://developers.cloudflare.com/r2/buckets/public-buckets/)).
 
 
-Create a Pages project using **Direct Upload**, and upload the `release/`
-folder. Independent single-player sessions need no game server. Our hosted
-deployment additionally uses a Pages Function for private diagnostics; deploy
-from the repository root so Wrangler includes `functions/` and the R2 binding. Keep the included `_headers` file: it
-provides COOP/COEP isolation needed by the WebAssembly threads. Use HTTPS and
-prefer a stable custom domain so saves remain under the same origin.
+The existing **candc-web** project is connected to
+[vladyslavprosolupov/candc-web](https://github.com/vladyslavprosolupov/candc-web),
+production branch `main`. Pushes to that branch trigger source builds in Pages.
+Keep the project and custom domain so browser saves retain the same origin.
+
+| Setting | Value |
+| --- | --- |
+| Framework | None |
+| Build command | `npm run build:cloud` |
+| Output directory | `release` |
+| Node / Python build environment | `NODE_VERSION=22.16.0`, `PYTHON_VERSION=3.12.8` |
+| Compilation concurrency | `BUILD_JOBS=2` |
+| Current temporary investigation only | `GX_WEB_DIAGNOSTICS=ON`, runtime `DIAGNOSTICS_ENABLED=true` |
+
+The source build downloads no game archives and needs no R2 credentials.
+The existing private diagnostics binding and Access configuration remain
+separate from public game-archive delivery. The root `functions/` directory
+provides the diagnostics API. Keep the exported `_headers`: COOP/COEP isolation
+is required for the WASM threads. Independent single-player games need no
+separate game server.
+
+### Manual deployment fallback
+
+Build and export the same source locally, then upload only `release/` to the
+existing project. The temporary-diagnostics section below gives the reviewed
+Wrangler root invocation, including its restore-safe debug configuration.
+Do not create another project or publish the workspace/private asset folders.
 
 [Direct Upload](https://developers.cloudflare.com/pages/get-started/direct-upload/)
 [Limits](https://developers.cloudflare.com/pages/platform/limits/)
@@ -366,9 +387,12 @@ smoke testing covers startup/intro/menu, not reproduction of the original freeze
 
 ### Disable and remove the temporary investigation code
 
-1. Deploy the base `wrangler.jsonc` with `DIAGNOSTICS_ENABLED=false` first. It
-   rejects new writes; enabled current collectors tear down after their next
-   configuration poll or HTTP 410. Reload older collector tabs.
+1. Disable the Git build opt-in (`GX_WEB_DIAGNOSTICS=OFF`) so later automatic
+   builds cannot re-enable collection. Deploy the base `wrangler.jsonc` with
+   `DIAGNOSTICS_ENABLED=false` first; the manual fallback can deploy this gate
+   without waiting for a new engine compile. It rejects new writes; enabled
+   current collectors tear down after their next configuration poll or HTTP 410.
+   Reload older collector tabs.
 2. Build with `GX_WEB_DIAGNOSTICS=OFF bash scripts/build.sh` and run
    `npm run export` without `--diagnostics`. Verify the build manifest is false,
    the generated engine has no `window.gxDiagnostics.engine` bridge, and SDL

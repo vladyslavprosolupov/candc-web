@@ -2015,6 +2015,29 @@ index 0000000..386027e
 +     return true;
 + }
 + 
+diff --git a/Patches/sdl3-page-fullscreen.patch b/Patches/sdl3-page-fullscreen.patch
+new file mode 100644
+index 0000000..34b5c6d
+--- /dev/null
++++ b/Patches/sdl3-page-fullscreen.patch
+@@ -0,0 +1,17 @@
++--- a/src/video/emscripten/SDL_emscriptenvideo.c
+++++ b/src/video/emscripten/SDL_emscriptenvideo.c
++@@ -716,6 +716,14 @@
++ 
++         EmscriptenFullscreenChangeEvent fsevent;
++         if (emscripten_get_fullscreen_status(&fsevent) == EMSCRIPTEN_RESULT_SUCCESS) {
+++            // GeneralsX @bugfix Codex 16/10/2026 Preserve page-owned HTML fullscreen.
+++            // Applying the initial windowed flags must not exit launcher fullscreen.
+++            if (fullscreen == SDL_FULLSCREEN_OP_LEAVE && MAIN_THREAD_EM_ASM_INT({
+++                    var active = document.fullscreenElement || document.webkitFullscreenElement;
+++                    return !!active && active !== document.querySelector(UTF8ToString($0));
+++                }, data->canvas_id)) {
+++                return SDL_FULLSCREEN_SUCCEEDED;
+++            }
++             if ((fullscreen == SDL_FULLSCREEN_OP_ENTER) == fsevent.isFullscreen) {
++                 return SDL_FULLSCREEN_SUCCEEDED;  // already there.
++             }
 diff --git a/cmake/emscripten.cmake b/cmake/emscripten.cmake
 index 3983cb7..e912130 100644
 --- a/cmake/emscripten.cmake
@@ -2075,7 +2098,7 @@ index ebafc6e..91cb9ed 100644
      BUILD_BYPRODUCTS ${FFMPEG_EM_LIBS}
      BUILD_IN_SOURCE FALSE
 diff --git a/cmake/sdl3.cmake b/cmake/sdl3.cmake
-index 33bd5b8..95d91d4 100644
+index 33bd5b8..ebb547f 100644
 --- a/cmake/sdl3.cmake
 +++ b/cmake/sdl3.cmake
 @@ -33,6 +33,10 @@ if(SAGE_USE_SDL3)
@@ -2089,7 +2112,7 @@ index 33bd5b8..95d91d4 100644
          set(SDL_SHARED OFF CACHE BOOL "No shared libs on Emscripten" FORCE)
          set(SDL_STATIC ON CACHE BOOL "Build SDL3 static for wasm" FORCE)
      else()
-@@ -53,6 +57,19 @@ if(SAGE_USE_SDL3)
+@@ -53,6 +57,24 @@ if(SAGE_USE_SDL3)
      set(SDL_QSPI OFF CACHE BOOL "Disable QSPI (unused)" FORCE)
      
      FetchContent_MakeAvailable(SDL3)
@@ -2101,6 +2124,11 @@ index 33bd5b8..95d91d4 100644
 +    # The patch has no compiled probes when GX_WEB_INPUT_DIAGNOSTICS is OFF.
 +    if(EMSCRIPTEN)
 +        find_program(GX_PATCH_PYTHON NAMES python3 REQUIRED)
++        # Page fullscreen survives SDL's initial windowed flags in every web build.
++        execute_process(COMMAND "${GX_PATCH_PYTHON}"
++            "${CMAKE_SOURCE_DIR}/scripts/web/apply-sdl-page-fullscreen.py"
++            "${sdl3_SOURCE_DIR}"
++            COMMAND_ERROR_IS_FATAL ANY)
 +        execute_process(COMMAND "${GX_PATCH_PYTHON}"
 +            "${CMAKE_SOURCE_DIR}/scripts/web/apply-sdl-diagnostics.py"
 +            "${sdl3_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/Patches/sdl3-input-diagnostics.patch"
@@ -2111,11 +2139,27 @@ index 33bd5b8..95d91d4 100644
      # Before SDL3_image build: force PNG discovery to platform-specific libpng
 diff --git a/docs/DEV_BLOG/2026-10-DIARY.md b/docs/DEV_BLOG/2026-10-DIARY.md
 new file mode 100644
-index 0000000..ddbbdae
+index 0000000..c54bfc9
 --- /dev/null
 +++ b/docs/DEV_BLOG/2026-10-DIARY.md
-@@ -0,0 +1,301 @@
+@@ -0,0 +1,317 @@
 +# Development Diary — October 2026
++
++## 2026-10-16: Preserve page fullscreen through SDL startup
++
++- SDL applies initial windowed flags while showing its game canvas. Its
++  Emscripten driver previously exited document fullscreen even when the page's
++  HTML element owned it, so fullscreen entered from the launcher was lost at boot.
++- Keep SDL fullscreen exit scoped to its own canvas. Apply the permanent,
++  hash-pinned SDL patch independently of optional input diagnostics.
++- Fullscreen entry and mouse capture use separate gestures; canvas capture follows
++  successful entry, and late capture grants after fullscreen exit are released.
++
++Validation: the actual pinned driver function fails the page-owned fullscreen
++fixture before patching and passes afterward, while canvas exit, windowed startup
++and SDL fullscreen entry still pass. Patch idempotence and source drift checks
++pass; all 17 fullscreen/pointer-lock tests pass. New WASM/browser verification
++follows in the wrapper integration.
 +
 +## 2026-10-16: Prepare clean source builds for cloud CI
 +
@@ -2616,6 +2660,37 @@ index 0000000..38cb1b9
 +
 +if __name__ == '__main__':
 +    apply(Path(sys.argv[1]), Path(sys.argv[2]))
+diff --git a/scripts/web/apply-sdl-page-fullscreen.py b/scripts/web/apply-sdl-page-fullscreen.py
+new file mode 100644
+index 0000000..ab4f64a
+--- /dev/null
++++ b/scripts/web/apply-sdl-page-fullscreen.py
+@@ -0,0 +1,25 @@
++#!/usr/bin/env python3
++"""Keep SDL window creation from exiting page-owned fullscreen; reject source drift."""
++from pathlib import Path
++import hashlib
++import subprocess
++import sys
++
++PRISTINE = 'bbef5b57371103088358e783106e6ffd493cd40141e21836c9c1c447144e2dbe'
++PATCHED = 'b87ece219c268f255393571c3cec5f24aba3444b19f6dfb2e4beeed7f12fce85'
++
++def apply(source):
++    target = source / 'src/video/emscripten/SDL_emscriptenvideo.c'
++    original = target.read_bytes()
++    digest = hashlib.sha256(original).hexdigest()
++    if digest == PATCHED:
++        return
++    if digest != PRISTINE:
++        raise SystemExit('SDL fullscreen patch requires the pinned pristine SDL 3.4.2 source')
++    patch = Path(__file__).resolve().parents[2] / 'Patches/sdl3-page-fullscreen.patch'
++    subprocess.run(['patch', '--batch', '-p1', '-i', str(patch)], cwd=source, check=True)
++    if hashlib.sha256(target.read_bytes()).hexdigest() != PATCHED:
++        raise SystemExit('SDL fullscreen patch verification failed')
++
++if __name__ == '__main__':
++    apply(Path(sys.argv[1]))
 diff --git a/scripts/web/make-dist.sh b/scripts/web/make-dist.sh
 index b60ed7b..12cc5c8 100755
 --- a/scripts/web/make-dist.sh
