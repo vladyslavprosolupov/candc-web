@@ -11,7 +11,10 @@ function browser(enabled, fetchImpl, restored = null) {
   const listeners = new Map(), intervals = new Map(), timeouts = new Map(), frames = new Map();
   let next = 0;
   const target = () => ({addEventListener(type, fn) { listeners.set(fn, {type, target: this}); }, removeEventListener(type, fn) { listeners.delete(fn); }});
-  const document = {...target(), getElementById: () => null, hasFocus: () => true, visibilityState: 'visible'};
+  const nodes = new Map();
+  const document = {...target(), getElementById: id => nodes.get(id) || null, hasFocus: () => true, visibilityState: 'visible',
+    createElement: () => ({style: {}, setAttribute() {}, remove() { nodes.delete(this.id); }}),
+    body: {appendChild(element) { nodes.set(element.id, element); }}};
   class Worker { constructor() { Object.assign(this, target()); } }
   const originals = {log() {}, info() {}, warn() {}, error() {}};
   const window = {...target(), document, Worker, Module: {gxDiagnosticsEnabled: true}};
@@ -112,4 +115,21 @@ test('enabled main and worker errors reach bounded chunks without serializing wo
   assert.ok(chunks[0].events.some(e => e.type === 'error' && e.data.includes('worker: worker failed token=[redacted]')));
   assert.ok(chunks[0].events.some(e => e.type === 'error' && e.data === 'main failed'));
   api.disable(); assert.equal(api.enabled, false);
+});
+
+test('manual report explains unavailable server or authentication without claiming an upload', async () => {
+  const requests = [];
+  const b = browser(true, async (url, options) => { requests.push({url, options}); return {ok: false, status: 401}; });
+  await settle();
+  const hotkey = [...b.listeners].find(([fn, listener]) => listener.type === 'keydown')[0];
+  hotkey({ctrlKey: true, shiftKey: true, code: 'F8', repeat: false, preventDefault() {}, stopImmediatePropagation() {}});
+  await settle();
+  const message = b.window.document.getElementById('gx-diagnostic-status');
+  assert.ok(message.textContent.includes('Отчёт пока нельзя отправить'));
+  assert.ok(message.textContent.includes('подключение и вход в игру'));
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].url, '/api/diagnostics?config=1');
+  assert.equal(b.calls.write, 0);
+  b.window.gxDiagnostics.disable();
+  assert.equal(b.window.document.getElementById('gx-diagnostic-status'), null);
 });
