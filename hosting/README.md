@@ -200,9 +200,7 @@ Worker hooks, storage reads, timers, frame sampling or uploads run while off.
 To opt in, compile with `GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh`, export
 with `npm run export -- --diagnostics`, then generate an ignored deployment
 config with `python3 scripts/diagnostics-deployment-config.py`. The generated
-config and Functions symlink form a temporary local project directory (Pages
-rejects custom `--config` paths). Run Wrangler with the generated directory as
-its working directory. The config sets `DIAGNOSTICS_ENABLED` to the exact string `true` for the same existing
+config sets `DIAGNOSTICS_ENABLED` to the exact string `true` for the same existing
 Pages project. The versioned base config explicitly sets it to `false`. Both the client
 export and server gate must be enabled. This uses the same existing project;
 it does not change Access policies, permitted identities or storage access.
@@ -305,8 +303,27 @@ GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh
 npm run export -- --diagnostics
 python3 scripts/diagnostics-deployment-config.py
 # Only after reviewing this candidate:
-.local/cloudflare-cli/node_modules/.bin/wrangler --cwd .local/debug-deployment pages deploy "$PWD/release" --project-name candc-web --branch main
+python3 - <<'PYDEPLOY'
+from pathlib import Path
+import os, subprocess
+base = Path('wrangler.jsonc')
+original = base.read_bytes()
+try:
+    base.write_bytes(Path('.local/debug-deployment/wrangler.jsonc').read_bytes())
+    subprocess.run(['.local/cloudflare-cli/node_modules/.bin/wrangler',
+                    'pages', 'deploy', str(Path('release').resolve()),
+                    '--project-name', 'candc-web', '--branch', 'main'], check=True)
+finally:
+    base.write_bytes(original)
+PYDEPLOY
 ```
+
+Wrangler 4.148 rejects custom Pages `--config` paths, and its nested-directory
+Functions temporary-file handling fails in this setup. The command above runs
+from the repository root, applies the reviewed debug config only for deployment,
+and restores the exact default-OFF source bytes even on failure. Do not run
+concurrent configuration edits during that scoped command. Source export runs
+before the temporary override, so its versioned configuration remains OFF.
 
 Historical validation of the earlier production collector (before the fixes
 below), 16 October 2026: eight Python and 39 Node tests passed, including
