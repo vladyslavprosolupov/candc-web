@@ -53,7 +53,7 @@ def main():
     (OUT / 'assets/builds.json').write_text('[]\n')
     (OUT / 'fonts').mkdir(exist_ok=True)
     for name in ['arial.ttf', 'arialbold.ttf', 'couriernew.ttf', 'timesnewroman.ttf']:
-        shutil.copy2(ROOT / '.local/staged/fonts' / name, OUT / 'fonts' / name)
+        shutil.copy2(ROOT / '.tools/fonts' / name, OUT / 'fonts' / name)
     shutil.copy2(ROOT / 'hosting/Liberation-LICENSE', OUT / 'fonts/LICENSE.txt')
     shutil.copy2(ENGINE / 'LICENSE.md', OUT / 'LICENSE.md')
     shutil.copy2(ROOT / 'hosting/_headers', OUT / '_headers')
@@ -78,7 +78,7 @@ def main():
                 for path in (ROOT / folder).rglob('*'):
                     if path.is_file() and '__pycache__' not in path.parts:
                         tar.add(path, arcname='generals-web/' + str(path.relative_to(ROOT)), recursive=False)
-            for name in ['README.md', 'package.json', 'package-lock.json', 'wrangler.jsonc', 'engine-version.json']:
+            for name in ['README.md', 'package.json', 'package-lock.json', 'wrangler.jsonc', 'engine-version.json', 'build-lock.json']:
                 tar.add(ROOT / name, arcname='generals-web/' + name)
             # Bundled dependency source and notices; omit checkout metadata and build outputs.
             for dep in (ENGINE / 'build/emscripten/_deps').glob('*-src'):

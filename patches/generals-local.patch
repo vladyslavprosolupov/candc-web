@@ -2016,7 +2016,7 @@ index 0000000..386027e
 + }
 + 
 diff --git a/cmake/emscripten.cmake b/cmake/emscripten.cmake
-index 3983cb7..8869fe2 100644
+index 3983cb7..e912130 100644
 --- a/cmake/emscripten.cmake
 +++ b/cmake/emscripten.cmake
 @@ -21,6 +21,10 @@ endif()
@@ -2030,11 +2030,20 @@ index 3983cb7..8869fe2 100644
  # The codebase treats every non-Windows platform as "_UNIX" (core_config adds
  # it for engine targets); the FetchContent'd GameSpy SDK needs it too, and its
  # targets don't link core_config - so define it globally. Emscripten's musl
+@@ -120,6 +124,8 @@ if(NOT TARGET Freetype::Freetype AND NOT TARGET freetype)
+     FetchContent_Declare(
+         freetype
+         URL https://gitlab.freedesktop.org/freetype/freetype/-/archive/VER-2-13-3/freetype-VER-2-13-3.tar.gz
++        # GeneralsX @build Codex 16/10/2026 Verify the dependency used by clean cloud builds.
++        URL_HASH SHA256=bc5c898e4756d373e0d991bab053036c5eb2aa7c0d5c67e8662ddc6da40c4103
+     )
+     set(FT_DISABLE_ZLIB     ON CACHE BOOL "" FORCE)  # uses the vendored copy instead
+     set(FT_DISABLE_BZIP2    ON CACHE BOOL "" FORCE)
 diff --git a/cmake/ffmpeg-emscripten.cmake b/cmake/ffmpeg-emscripten.cmake
-index ebafc6e..2e5a7de 100644
+index ebafc6e..91cb9ed 100644
 --- a/cmake/ffmpeg-emscripten.cmake
 +++ b/cmake/ffmpeg-emscripten.cmake
-@@ -28,7 +28,9 @@ endif()
+@@ -28,8 +28,12 @@ endif()
  include(ExternalProject)
  
  set(FFMPEG_EM_VERSION "7.1")
@@ -2043,8 +2052,28 @@ index ebafc6e..2e5a7de 100644
 +set(FFMPEG_EM_PREFIX "${CMAKE_BINARY_DIR}/_deps/ffmpeg-emscripten" CACHE PATH
 +    "FFmpeg build root (use a path without spaces or shell metacharacters)")
  set(FFMPEG_EM_INSTALL "${FFMPEG_EM_PREFIX}/install")
++# GeneralsX @build Codex 16/10/2026 Bound cloud-build concurrency and verify dependency source.
++set(FFMPEG_BUILD_JOBS "8" CACHE STRING "Parallel jobs for the FFmpeg dependency")
  
  # emconfigure/emmake live next to emcc (EMSCRIPTEN_ROOT_PATH comes from the
+ # toolchain file).
+@@ -47,6 +51,7 @@ set(FFMPEG_EM_LIBS
+ 
+ ExternalProject_Add(ffmpeg_emscripten_build
+     URL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_EM_VERSION}.tar.xz
++    URL_HASH SHA256=40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6
+     PREFIX ${FFMPEG_EM_PREFIX}
+     DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+     CONFIGURE_COMMAND
+@@ -65,7 +70,7 @@ ExternalProject_Add(ffmpeg_emscripten_build
+             --enable-parser=mpegaudio
+             --enable-protocol=file
+             "--extra-cflags=-pthread -O2"
+-    BUILD_COMMAND ${EMSCRIPTEN_ROOT_PATH}/emmake make -j8
++    BUILD_COMMAND ${EMSCRIPTEN_ROOT_PATH}/emmake make -j${FFMPEG_BUILD_JOBS}
+     INSTALL_COMMAND ${EMSCRIPTEN_ROOT_PATH}/emmake make install
+     BUILD_BYPRODUCTS ${FFMPEG_EM_LIBS}
+     BUILD_IN_SOURCE FALSE
 diff --git a/cmake/sdl3.cmake b/cmake/sdl3.cmake
 index 33bd5b8..95d91d4 100644
 --- a/cmake/sdl3.cmake
@@ -2082,11 +2111,20 @@ index 33bd5b8..95d91d4 100644
      # Before SDL3_image build: force PNG discovery to platform-specific libpng
 diff --git a/docs/DEV_BLOG/2026-10-DIARY.md b/docs/DEV_BLOG/2026-10-DIARY.md
 new file mode 100644
-index 0000000..15eef3d
+index 0000000..ddbbdae
 --- /dev/null
 +++ b/docs/DEV_BLOG/2026-10-DIARY.md
-@@ -0,0 +1,292 @@
+@@ -0,0 +1,301 @@
 +# Development Diary — October 2026
++
++## 2026-10-16: Prepare clean source builds for cloud CI
++
++- Verify the FFmpeg and FreeType source archives against pinned SHA-256 values.
++  Allow the wrapper to bound FFmpeg compilation jobs alongside the engine jobs.
++- The independent wrapper reconstructs this engine from the pinned upstream and
++  maintained patch, verifies its source tree, bootstraps the pinned SDK/build
++  tools and open Liberation fonts, and exports without a private installation.
++  Diagnostics remain an explicit build/export opt-in.
 +
 +## 2026-10-16: Validate the repaired game in Chrome
 +
@@ -88513,7 +88551,7 @@ index 0000000..b634135
 +})(typeof window === 'undefined' ? null : window);
 diff --git a/web/shell/fullscreen.js b/web/shell/fullscreen.js
 new file mode 100644
-index 0000000..fe6df7b
+index 0000000..31efa99
 --- /dev/null
 +++ b/web/shell/fullscreen.js
 @@ -0,0 +1,54 @@
@@ -88538,8 +88576,8 @@ index 0000000..fe6df7b
 +        const root = document.documentElement;
 +        const enter = root.requestFullscreen || root.webkitRequestFullscreen;
 +        if (!enter) throw new Error('Полный экран недоступен. Откройте игру в обычной вкладке браузера.');
-+        // GeneralsX @feature Codex 15/10/2026 Lock first: fullscreen consumes user activation.
-+        window.gxPointerLock?.request(true);
++        // GeneralsX @bugfix Codex 16/10/2026 Give fullscreen its own gesture.
++        // Pointer lock is requested by the next canvas click after entry succeeds.
 +        // GeneralsX @bugfix Codex 08/10/2026 Explicitly hide browser navigation.
 +        await enter.call(root, {navigationUI: 'hide'});
 +      }
@@ -89348,10 +89386,10 @@ index 0000000..3147dc9
 +if (typeof module !== 'undefined') module.exports = { gxPlanLocalFiles, gxCheckBig };
 diff --git a/web/shell/pointer-lock.js b/web/shell/pointer-lock.js
 new file mode 100644
-index 0000000..f6fc55b
+index 0000000..1ed77f1
 --- /dev/null
 +++ b/web/shell/pointer-lock.js
-@@ -0,0 +1,121 @@
+@@ -0,0 +1,126 @@
 +// GeneralsX @feature Codex 15/10/2026 Confine the game cursor with browser Pointer Lock.
 +'use strict';
 +window.addEventListener('DOMContentLoaded', () => {
@@ -89403,15 +89441,15 @@ index 0000000..f6fc55b
 +    if (locked()) document.exitPointerLock();
 +  }
 +
-+  async function request(enteringFullscreen = false) {
-+    if (!playing() || (!fullscreen() && !enteringFullscreen) || locked() || pending) return;
++  async function request() {
++    if (!playing() || !fullscreen() || locked() || pending) return;
 +    if (!canvas.requestPointerLock) {
 +      status.textContent = 'Захват мыши недоступен в этом браузере.';
 +      return;
 +    }
 +    pending = true;
 +    try {
-+      // Must run in the click/key gesture, before requestFullscreen consumes it.
++      // A fresh canvas gesture follows successful fullscreen entry.
 +      await canvas.requestPointerLock();
 +    } catch (error) {
 +      console.warn('[pointer-lock]', error);
@@ -89435,6 +89473,11 @@ index 0000000..f6fc55b
 +
 +  document.addEventListener('pointerlockchange', () => {
 +    pending = false;
++    // An asynchronous grant can arrive after the user has left fullscreen.
++    if (locked() && !fullscreen()) {
++      release();
++      return;
++    }
 +    button.style.visibility = locked() ? 'hidden' : '';
 +    status.textContent = locked() ? '' : (fullscreen() && playing() ? 'Щёлкните по игре, чтобы захватить мышь.' : '');
 +    updateCursor();

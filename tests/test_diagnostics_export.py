@@ -70,6 +70,18 @@ class DiagnosticsExportTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 export_site.validate_diagnostics_build(build, True)
 
+    def test_cloud_runtime_gate_keeps_project_security_and_source_defaults(self):
+        base = json.loads((ROOT / 'wrangler.jsonc').read_text())
+        for enabled in [False, True]:
+            release = {'diagnosticsCompiled': enabled, 'diagnosticsEnabled': enabled}
+            result = deployment_config.cloud_runtime_config(base, release)
+            expected = json.loads(json.dumps(base))
+            expected['vars']['DIAGNOSTICS_ENABLED'] = 'true' if enabled else 'false'
+            self.assertEqual(result, expected)
+            self.assertEqual(base['vars']['DIAGNOSTICS_ENABLED'], 'false')
+        with self.assertRaises(ValueError):
+            deployment_config.cloud_runtime_config(base, {'diagnosticsCompiled': False, 'diagnosticsEnabled': True})
+
 
 if __name__ == '__main__':
     unittest.main()

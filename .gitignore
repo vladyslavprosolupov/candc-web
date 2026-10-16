@@ -11,3 +11,13 @@ release/
 # Independently versioned engine checkout.
 engine/
 .wrangler/
+
+# Local credentials; sanitized examples may be versioned.
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+!.env.example
+!.env.*.example
+!.dev.vars.example
+!.dev.vars.*.example

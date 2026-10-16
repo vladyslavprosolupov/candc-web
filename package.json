@@ -6,6 +6,8 @@
     "dev": "python3 scripts/serve.py",
     "start": "python3 scripts/serve.py",
     "build": "bash scripts/build.sh",
+    "build:cloud": "bash scripts/build-cloud.sh",
+    "bootstrap": "python3 scripts/bootstrap.py",
     "assets": ".tools/python/bin/python scripts/import-assets.py",
     "test": "python3 -m unittest discover -s tests && node --test tests/*.test.cjs",
     "test:renderer:build": "python3 scripts/build-render-test.py",

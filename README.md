@@ -23,36 +23,54 @@ preserved. The web launcher's language is independent of the game's language.
 
 ## Rebuild
 
-The toolchain is installed under `.tools/`, without changing shell startup files.
-Requirements: Git, CMake, Ninja, Python 3 and Emscripten **4.0.10**.
+The bootstrap needs Git, curl, Python 3 with venv, and the host C/C++ build
+utilities (including make). It installs pinned CMake/Ninja and Emscripten
+**4.0.10** under ignored `.tools/`, without changing shell startup files.
 
 ```sh
-# Only for a fresh workspace:
-git clone --depth 1 https://github.com/Lolendor/Generals-WebAssembly.git engine
-git -C engine fetch --depth 1 origin 2f564cd6095485e1303335e516b9449fd8c041f3
-git -C engine checkout 2f564cd6095485e1303335e516b9449fd8c041f3
-git -C engine apply ../patches/generals-local.patch
-git clone --depth 1 https://github.com/emscripten-core/emsdk.git .tools/emsdk
-.tools/emsdk/emsdk install 4.0.10
-.tools/emsdk/emsdk activate 4.0.10
-python3 -m venv .tools/python
-.tools/python/bin/pip install Brotli==1.1.0
-
-# Import installed files (default: the supplied Downloads/R.G. Mechanics folder):
-npm run assets
-# Or point at another parent containing the two installation directories:
-npm run assets -- --source '/path/to/Command and Conquer - Generals'
-
-# Compile and assemble:
+npm run bootstrap
 npm run build
-npm start
+npm run export
+npm run preview
+# http://localhost:8095
 ```
 
-The checkout in `engine/` already includes the local patch; do not reapply it
-there. The fresh-checkout instructions above apply it once. Initial builds
-download the pinned engine dependencies and FFmpeg source. FFmpeg's makefiles
-cannot handle the `&` in this workspace path, so its build root is stored in a
-stable, project-specific temporary directory by `scripts/build.sh`.
+A fresh checkout reconstructs `engine/` from the exact upstream commit and
+tracked patch, then verifies its Git tree against `engine-version.json`. Added
+patch files enter Git's index so the downloadable source includes them. An
+existing engine with different source or developer edits is preserved and the
+bootstrap fails; use a separate clean checkout instead of resetting it.
+
+`build-lock.json` pins the SDK installer commit, compiler version, build tools
+and Liberation 2.1.5 archive plus individual font hashes. Fonts are downloaded
+from the open-source release into `.tools/fonts`, never from an installed game.
+The build and export need no `.local/staged` installation or game archives.
+FFmpeg and all source dependencies are fetched from pinned revisions/archives;
+its build directory uses a project-specific temporary path because FFmpeg's
+makefiles cannot handle this workspace's ampersand.
+
+For the complete clean Linux/Cloudflare path, run `npm run build:cloud`. It
+bootstraps, installs the locked npm packages, compiles the real engine, runs
+tests against the generated bridge and exports `release/`. Normal builds keep
+temporary diagnostics OFF. Only the current investigation opts in with
+`GX_WEB_DIAGNOSTICS=1 npm run build:cloud`; its separate server gate must also
+be explicitly enabled in the deployment settings. `BUILD_JOBS` bounds engine
+and FFmpeg compilation (cloud default: 2).
+
+Only when Cloudflare sets `CF_PAGES=1`, the final build step derives the
+Functions runtime gate from the verified exported build manifest and writes
+that gate into the ephemeral checkout's `wrangler.jsonc`. This runs after source
+export, so the downloadable source retains the default-OFF configuration. Local
+builds leave the versioned runtime configuration unchanged. The deployed Git
+build must verify that Pages consumes this generated runtime setting.
+
+Optional local asset packing is separate from the hosting build:
+
+```sh
+python3 -m venv .tools/python
+.tools/python/bin/pip install Brotli==1.1.0
+npm run assets -- --source '/path/to/Command and Conquer - Generals'
+```
 
 `scripts/import-assets.py` validates BIG archive indexes, stages only data,
 maps and fonts, and creates the browser package. It does not execute Windows

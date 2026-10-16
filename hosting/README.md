@@ -5,6 +5,30 @@ contains the engine, launcher, open fonts, licenses and a downloadable snapshot
 of the modified source and dependency sources. It contains **no game archives**.
 Export checks both this and the 25 MiB per-file Cloudflare Pages limit.
 
+## Clean Git build
+
+Build command: `npm run build:cloud`. Output directory: `release`. The command
+fetches the pinned upstream engine, applies the maintained patch and verifies
+its source tree, installs the pinned SDK/build tools and open Liberation fonts,
+then compiles and tests the actual WASM engine. No game installation, private
+asset archive, R2 credential or precompiled game binary is needed for the build.
+Only the separate configured R2 download supplies players' game data.
+
+Build defaults leave temporary diagnostics OFF. During the current investigation
+set `GX_WEB_DIAGNOSTICS=1` explicitly in the production build environment and
+`DIAGNOSTICS_ENABLED=true` in the Functions runtime; normal builds omit these
+opt-ins. Keep the existing Access policy, allowed identities and private
+diagnostics bucket binding. `BUILD_JOBS` controls both engine and FFmpeg jobs
+(cloud default 2).
+
+Only when Cloudflare sets `CF_PAGES=1`, the final build step derives the
+Functions runtime gate from the verified exported build manifest and writes
+that gate into the ephemeral checkout's `wrangler.jsonc`. This runs after source
+export, so the downloadable source retains the default-OFF configuration. Local
+builds leave the versioned runtime configuration unchanged. The deployed Git
+build must verify that Pages consumes this generated runtime setting. The cold build must complete within Pages' build timeout;
+cache availability must not substitute for verifying the source compilation.
+
 ## Download package → local import (default)
 
 The workflow follows [GTA Vice City WASM](https://github.com/joncodeofficial/gta-vice-city-wasm):
