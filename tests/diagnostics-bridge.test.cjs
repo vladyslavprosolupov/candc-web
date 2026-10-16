@@ -24,7 +24,7 @@ test('compiled Emscripten telemetry bridge copies all fields and contains collec
   const heap = new Uint32Array(64);
   for (let i = 0; i < 48; i++) heap[i + 1] = i + 100;
   let snapshot, errors = 0;
-  const context = {HEAPU32: heap, growMemViews() {}, UTF8ToString: () => 'Maps/USA04/USA04.map',
+  const context = {AL: {buffers: {0: {id: 0}, 1: {id: 1, refCount: 0, audioBuf: {length: 100, numberOfChannels: 2}}}, contexts: {1: {sources: {1: {}}}}, currentCtx: {err: 40964}}, HEAPU32: heap, growMemViews() {}, UTF8ToString: () => 'Maps/USA04/USA04.map',
     window: {gxDiagnostics: {enabled: true, log() {}, engine: value => { snapshot = value; }}}, console: {error: () => errors++}};
   const bridge = vm.runInNewContext('(' + source + ')', context);
   assert.doesNotThrow(() => bridge(4, 0, 0, 0));
@@ -39,6 +39,14 @@ test('compiled Emscripten telemetry bridge copies all fields and contains collec
   assert.equal(snapshot.sdlInternal.queueCount, 145);
   assert.equal(snapshot.sdlInternal.hasHead, true);
   assert.equal(errors, 0);
+  heap[44] = 0; // First audio scan; later snapshots reuse bounded numeric data.
+  bridge(4, 0, 0, 0);
+  assert.equal(snapshot.audio.audioBytes, 800);
+  assert.equal(snapshot.audio.buffers, 1);
+  assert.equal(snapshot.audio.sources, 1);
+  assert.equal(snapshot.audio.unreferenced, 1);
+  assert.equal(snapshot.audio.error, 40964);
+  assert.equal(context.AL.currentCtx.err, 40964, 'sampling does not clear pending AL errors');
   heap[30] = 65536; // wasm32's 4GiB limit must not wrap to zero.
   bridge(4, 0, 0, 0);
   assert.equal(snapshot.wasmHeapBytes, 4294967296);
