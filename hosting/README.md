@@ -26,9 +26,11 @@ checks the actual compile/export manifest after the build. It never rewrites
 Wrangler configuration. The current investigation has a separate temporary
 `env.production` opt-in; base/local/preview gates stay OFF. Remove that production
 override together with its temporary test and the explicit ON build-command
-prefix using the teardown instructions below. The cold build must complete
-within Pages' build timeout; cache availability must not substitute for verifying
-the source compilation.
+prefix using the teardown instructions below. Verify the actual cold source
+build on Pages; local timing and cache availability do not establish its cloud
+duration. Cloudflare documents a [20-minute build timeout](https://developers.cloudflare.com/pages/platform/limits/#builds), although the successful
+cloud run recorded below took longer. Do not depend on that observed behavior
+as a guaranteed allowance.
 
 ## Download package → local import (default)
 
@@ -148,9 +150,18 @@ The existing Pages project's automatic Git builds `e346963e` (root `e2ce89a`)
 and `b3c61c26` (root `91101a0`) completed successfully. Those releases compiled
 diagnostics OFF: plaintext project runtime variables did not supply the intended
 build-only flag. These successes establish the source build path, rather than
-verification of the later production diagnostics opt-in. The final `6433ef1`
-automatic build has separate deployment verification; no successful result for
-that build is claimed here.
+verification of the later production diagnostics opt-in.
+
+The final automatic build `717c1d44` from root `6433ef1` succeeded and deployed
+at 13:25:59 UTC. Its build stage lasted 27m17s, including about 178 seconds
+installing Python 3.12.8 from source and 1,310.5 seconds of actual engine build.
+The completed log shows continuous compiler progress, followed by 25 Python
+and 50 Node tests passing. Live log retrieval had shown only cloning lines
+while this work was running; that incomplete view did not mean the build was
+stuck. No cancellation occurred. The compiled/exported gates and declared
+production runtime gate are all ON; exported build ID is `5fc743cf9351`.
+Production browser/report verification is recorded separately. The verified
+source pins Python 3.12.8.
 
 A clean Linux ARM64 Docker build, limited to four CPUs and 6 GiB RAM, fetched
 the pinned engine, SDK, tools and fonts and compiled/exported the actual engine
