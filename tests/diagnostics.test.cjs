@@ -112,3 +112,20 @@ test('config status requires authentication, works without storage, and reports 
     assert.equal(response.headers.get('Cache-Control'), 'no-store');
   }
 });
+
+test('interaction storms retain recent pipeline samples within hard bounds', () => {
+  let saved;
+  const r = createRecorder({...options(async () => {}), persist: q => { saved = q; }});
+  for (let n = 0; n < 12; n++) {
+    r.record('engine', {n}); r.record('browser', {n});
+  }
+  for (let n = 0; n < 1000; n++) r.record('pointerdown', {n, bounded: 'x'.repeat(2000)});
+  r.enqueue('manual', {});
+  const chunk = saved[0];
+  for (const type of ['engine', 'browser'])
+    assert.deepEqual(chunk.events.filter(event => event.type === type).map(event => event.data.n), [4, 5, 6, 7, 8, 9, 10, 11]);
+  assert.ok(chunk.events.length <= 256);
+  assert.ok(Buffer.byteLength(JSON.stringify(chunk.events)) <= 36 * 1024);
+  assert.ok(Buffer.byteLength(JSON.stringify(chunk)) <= MAX_BYTES);
+  assert.ok(chunk.dropped > 0);
+});
