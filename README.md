@@ -73,6 +73,13 @@ tracking. **Do not publish `engine/web/dist/assets/`: it contains your game data
 - `scripts/`: local asset import, build and HTTP server integration.
 - `tests/`: archive validation and HTTP isolation/range regression tests.
 
+The wrapper and `engine/` are independent Git repositories. `engine-version.json`
+records the upstream revision, preserved pre-existing baseline and current local
+engine commit. The tracked `patches/generals-local.patch` reconstructs the current
+engine source from the pinned upstream revision; local engine commits need not
+exist on the upstream remote. Exported source includes both working source and
+this provenance manifest.
+
 Engine licensing is GPL v3 with the additional terms in `engine/LICENSE.md`.
 Game assets remain separately owned. Fonts are Liberation 2.1.5. This is an
 independent modified program, not an EA product or an EA-endorsed release.
@@ -85,6 +92,16 @@ npm test
 npm run test:renderer:build
 # With npm start running, open http://localhost:8080/render-test/
 ```
+
+The input-freeze investigation adds actual-SDL concurrency tests and actual
+WebGL ownership/cache fixtures. See
+`engine/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md` for
+reproduction commands, evidence and limits, and `hosting/README.md` for explicit
+temporary diagnostics opt-in, disable and removal. Normal builds and exports
+keep diagnostic probes/collection disabled.
+
+Historical validation of the earlier build follows; current validation is
+recorded in the investigation report and hosting guide.
 
 These tests check invalid/truncated BIG archives, WebAssembly MIME types,
 COOP/COEP isolation, full and partial responses, HEAD and invalid ranges.

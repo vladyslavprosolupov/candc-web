@@ -1,8 +1,488 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 7192bf7..c0d6be1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -156,3 +156,21 @@ endif()
+ 
+ feature_summary(WHAT ENABLED_FEATURES DESCRIPTION "Enabled features:")
+ feature_summary(WHAT DISABLED_FEATURES DESCRIPTION "Disabled features:")
++
++# GeneralsX @build Codex 16/10/2026 Compile temporary probes only at input boundaries.
++if(EMSCRIPTEN AND GX_WEB_INPUT_DIAGNOSTICS)
++    target_compile_definitions(SDL3-static PRIVATE GX_WEB_INPUT_DIAGNOSTICS)
++    foreach(game IN ITEMS Generals GeneralsMD)
++        if(game STREQUAL "GeneralsMD")
++            set(gx_device_target z_gameenginedevice)
++        else()
++            set(gx_device_target g_gameenginedevice)
++        endif()
++        if(TARGET ${gx_device_target})
++            foreach(source IN ITEMS SDL3GameEngine.cpp SDL3Device/GameClient/SDL3Mouse.cpp SDL3Device/GameClient/SDL3Keyboard.cpp)
++                set_property(SOURCE "${CMAKE_SOURCE_DIR}/${game}/Code/GameEngineDevice/Source/${source}"
++                    TARGET_DIRECTORY ${gx_device_target} APPEND PROPERTY COMPILE_DEFINITIONS GX_WEB_INPUT_DIAGNOSTICS)
++            endforeach()
++        endif()
++    endforeach()
++endif()
+diff --git a/Core/GameEngine/Source/Common/INI/INI.cpp b/Core/GameEngine/Source/Common/INI/INI.cpp
+index 6996082..d961703 100644
+--- a/Core/GameEngine/Source/Common/INI/INI.cpp
++++ b/Core/GameEngine/Source/Common/INI/INI.cpp
+@@ -28,6 +28,7 @@
+ ///////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ // INCLUDES ///////////////////////////////////////////////////////////////////////////////////////
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+ #define DEFINE_DEATH_NAMES
+ 
+@@ -192,9 +193,6 @@ INI::INI()
+ //-------------------------------------------------------------------------------------------------
+ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadType, Xfer *pXfer, Bool subdirs )
+ {
+-	// GeneralsX @feature BenderAI 20/02/2026 Debug hang investigation
+-	fprintf(stderr, "[INI] loadFileDirectory('%s') START\n", fileDirName.str());
+-	fflush(stderr);
+ 	
+ 	UnsignedInt filesRead = 0;
+ 
+@@ -213,24 +211,14 @@ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadTyp
+ 		iniFile.concat(ext);
+ 	}
+ 
+-	fprintf(stderr, "[INI] loadFileDirectory - checking iniFile: '%s'\n", iniFile.str());
+-	fflush(stderr);
+ 	
+ 	if (TheFileSystem->doesFileExist(iniFile.str()))
+ 	{
+-		fprintf(stderr, "[INI] loadFileDirectory - loading iniFile: '%s' START\n", iniFile.str());
+-		fflush(stderr);
+ 		filesRead += load(iniFile, loadType, pXfer);
+-		fprintf(stderr, "[INI] loadFileDirectory - loading iniFile: '%s' END\n", iniFile.str());
+-		fflush(stderr);
+ 	}
+ 
+ 	// Load any additional ini files from a "filename" directory and its subdirectories.
+-	fprintf(stderr, "[INI] loadFileDirectory - calling loadDirectory('%s') START\n", iniDir.str());
+-	fflush(stderr);
+ 	filesRead += loadDirectory(iniDir, loadType, pXfer, subdirs);
+-	fprintf(stderr, "[INI] loadFileDirectory - calling loadDirectory('%s') END\n", iniDir.str());
+-	fflush(stderr);
+ 
+ 	// Expect to open and load at least one file.
+ 	if (filesRead == 0)
+@@ -240,8 +228,6 @@ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadTyp
+ 		throw INI_CANT_OPEN_FILE;
+ 	}
+ 
+-	fprintf(stderr, "[INI] loadFileDirectory('%s') END - filesRead=%d\n", fileDirName.str(), filesRead);
+-	fflush(stderr);
+ 	return filesRead;
+ }
+ 
+@@ -252,9 +238,6 @@ UnsignedInt INI::loadFileDirectory( AsciiString fileDirName, INILoadType loadTyp
+ //-------------------------------------------------------------------------------------------------
+ UnsignedInt INI::loadDirectory( AsciiString dirName, INILoadType loadType, Xfer *pXfer, Bool subdirs )
+ {
+-	// GeneralsX @feature BenderAI 20/02/2026 Debug hang investigation
+-	fprintf(stderr, "[INI] loadDirectory('%s') START\n", dirName.str());
+-	fflush(stderr);
+ 	
+ 	UnsignedInt filesRead = 0;
+ 
+@@ -395,32 +378,19 @@ static INIFieldParseProc findFieldParse(const FieldParse* parseTable, const char
+ //-------------------------------------------------------------------------------------------------
+ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
+ {
+-	// GeneralsX @feature BenderAI 20/02/2026 Debug hang investigation
+-	fprintf(stderr, "[INI] load('%s') START\n", filename.str());
+-	fflush(stderr);
+ 	
+ 	setFPMode(); // so we have consistent Real values for GameLogic -MDC
+ 
+ 	s_xfer = pXfer;
+-	fprintf(stderr, "[INI] load - calling prepFile('%s') START\n", filename.str());
+-	fflush(stderr);
+ 	prepFile(filename, loadType);
+-	fprintf(stderr, "[INI] load - prepFile completed\n");
+-	fflush(stderr);
+ 
+ 	try
+ 	{
+ 
+ 		// read all lines in the file
+ 		DEBUG_ASSERTCRASH( m_endOfFile == FALSE, ("INI::load, EOF at the beginning!") );
+-		UnsignedInt lineCount = 0;
+ 		while( m_endOfFile == FALSE )
+ 		{
+-			lineCount++;
+-			if ((lineCount % 100) == 0) {
+-				fprintf(stderr, "[INI] load - processed %d lines\n", lineCount);
+-				fflush(stderr);
+-			}
+ 			
+ 			// read this line
+ 			readLine();
+@@ -472,8 +442,6 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
+ 			}
+ 
+ 		}
+-		fprintf(stderr, "[INI] load - processed total %d lines\n", lineCount);
+-		fflush(stderr);
+ 	}
+ 	catch (...)
+ 	{
+@@ -487,8 +455,6 @@ UnsignedInt INI::load( AsciiString filename, INILoadType loadType, Xfer *pXfer )
+ 
+ 	unPrepFile();
+ 
+-	fprintf(stderr, "[INI] load('%s') END\n", filename.str());
+-	fflush(stderr);
+ 	return 1;
+ }
+ 
+diff --git a/Core/GameEngine/Source/GameClient/GlobalLanguage.cpp b/Core/GameEngine/Source/GameClient/GlobalLanguage.cpp
+index f36f675..60a4076 100644
+--- a/Core/GameEngine/Source/GameClient/GlobalLanguage.cpp
++++ b/Core/GameEngine/Source/GameClient/GlobalLanguage.cpp
+@@ -50,6 +50,7 @@
+ //-----------------------------------------------------------------------------
+ // USER INCLUDES //////////////////////////////////////////////////////////////
+ //-----------------------------------------------------------------------------
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include "PreRTS.h"
+ 
+ #include <stdio.h>
+@@ -157,18 +158,9 @@ void GlobalLanguage::init()
+ 		AsciiString fname;
+ 		fname.format("Data\\%s\\Language", registryLanguage.str());
+ 
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] GlobalLanguage init registryLanguage=%s primaryIni=%s",
+-			registryLanguage.str(),
+-			fname.str());
+-		fprintf(stderr, "%s\n", log_buffer);
+ 
+ 		INI ini;
+ 		ini.loadFileDirectory( fname, INI_LOAD_OVERWRITE, nullptr );
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] GlobalLanguage init loaded primary unicodeFont=%s",
+-			m_unicodeFontName.isNotEmpty() ? m_unicodeFontName.str() : "<empty>");
+-		fprintf(stderr, "%s\n", log_buffer);
+ 
+ 		// GeneralsX @bugfix fbraz 04/06/2026 Only fall back to stock English if the primary language
+ 		// did not set UnicodeFontName. This protects two scenarios:
+@@ -185,31 +177,10 @@ void GlobalLanguage::init()
+ 			stockFnameWithExt.concat(".ini");
+ 			if (TheFileSystem->doesFileExist(stockFnameWithExt.str()))
+ 			{
+-				sprintf(log_buffer,
+-					"[GX-ISSUE144] GlobalLanguage init loading stock fallback=%s",
+-					stockFname.str());
+-				fprintf(stderr, "%s\n", log_buffer);
+ 				ini.loadFileDirectory( stockFname, INI_LOAD_MULTIFILE, nullptr );
+-				sprintf(log_buffer,
+-					"[GX-ISSUE144] GlobalLanguage init fallback merged unicodeFont=%s (may have been filled)",
+-					m_unicodeFontName.isNotEmpty() ? m_unicodeFontName.str() : "<empty>");
+-				fprintf(stderr, "%s\n", log_buffer);
+-			}
+-			else
+-			{
+-				sprintf(log_buffer,
+-					"[GX-ISSUE144] GlobalLanguage init stock fallback skipped, file not present: %s",
+-					stockFnameWithExt.str());
+-				fprintf(stderr, "%s\n", log_buffer);
+ 			}
+ 		}
+ 
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] GlobalLanguage init final unicodeFont=%s drawableCaption=%s defaultWindow=%s",
+-			m_unicodeFontName.isNotEmpty() ? m_unicodeFontName.str() : "<empty>",
+-			m_drawableCaptionFont.name.isNotEmpty() ? m_drawableCaptionFont.name.str() : "<empty>",
+-			m_defaultWindowFont.name.isNotEmpty() ? m_defaultWindowFont.name.str() : "<empty>");
+-		fprintf(stderr, "%s\n", log_buffer);
+ 	}
+ 
+ 	StringList::iterator it = m_localFonts.begin();
+@@ -224,8 +195,6 @@ void GlobalLanguage::init()
+ 		}
+ 		else
+ 		{
+-			sprintf(log_buffer, "[GX-ISSUE144] GlobalLanguage local font add OK file=%s", font.str());
+-			fprintf(stderr, "%s\n", log_buffer);
+ 			//SendMessage( HWND_BROADCAST, WM_FONTCHANGE, 0, 0);
+ 		}
+ 		++it;
+@@ -234,12 +203,6 @@ void GlobalLanguage::init()
+ 	// override values with user preferences
+ 	OptionPreferences optionPref;
+ 	m_userResolutionFontSizeAdjustment = optionPref.getResolutionFontAdjustment();
+-	sprintf(log_buffer,
+-		"[GX-ISSUE144] GlobalLanguage resolutionAdjustment effective=%.3f user=%.3f base=%.3f",
+-		getResolutionFontSizeAdjustment(),
+-		m_userResolutionFontSizeAdjustment,
+-		m_resolutionFontSizeAdjustment);
+-	fprintf(stderr, "%s\n", log_buffer);
+ }
+ 
+ void GlobalLanguage::reset()
+diff --git a/Core/GameEngineDevice/Include/WebInputDiagnostics.h b/Core/GameEngineDevice/Include/WebInputDiagnostics.h
+new file mode 100644
+index 0000000..2e23147
+--- /dev/null
++++ b/Core/GameEngineDevice/Include/WebInputDiagnostics.h
+@@ -0,0 +1,140 @@
++#pragma once
++// GeneralsX @feature Codex 16/10/2026 Read-only browser input pipeline telemetry.
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++#include <SDL3/SDL.h>
++#include <emscripten.h>
++#include <emscripten/proxying.h>
++#include <emscripten/threading.h>
++// Emscripten 4.0.10 dlmalloc ABI (SDK compat/malloc.h), size_t fields.
++// Including compat/malloc.h directly breaks its include_next search path.
++struct mallinfo {
++    size_t arena, ordblks, smblks, hblks, hblkhd, usmblks, fsmblks, uordblks, fordblks, keepcost;
++};
++extern "C" struct mallinfo mallinfo(void);
++#include "GameClient/GameClient.h"
++#include "GameClient/GameWindow.h"
++#include "GameClient/GameWindowManager.h"
++#include "GameClient/InGameUI.h"
++#include "GameClient/Mouse.h"
++#include "GameLogic/GameLogic.h"
++#include "Common/GlobalData.h"
++
++extern "C" void SDL_GXSetInputDiagnosticsEnabled(bool enabled);
++extern "C" void SDL_GXGetInputDiagnostics(Uint32* values);
++
++struct GxWebInputCounters {
++    bool enabled = false, checked = false;
++    unsigned pollCalls = 0, missingWindow = 0, sequence = 0;
++    unsigned polled = 0, mouseIn = 0, mouseOut = 0, mouseDropped = 0;
++    unsigned buttonIn = 0, buttonOut = 0, buttonDropped = 0;
++    unsigned keyIn = 0, keyOut = 0, keyDropped = 0, updates = 0;
++    Uint64 sampledAt = 0;
++};
++inline GxWebInputCounters& gxWebInputCounters() {
++    // All accesses happen on the engine thread; the browser receives copies.
++    static GxWebInputCounters counters;
++    return counters;
++}
++inline void gxWebMouseEvent(const SDL_Event& event, int stage) {
++    GxWebInputCounters& c = gxWebInputCounters();
++    if (!c.enabled) return;
++    bool button = event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP;
++    if (stage == 0) { ++c.mouseIn; if (button) ++c.buttonIn; }
++    if (stage == 1) { ++c.mouseOut; if (button) ++c.buttonOut; }
++    if (stage == 2) { ++c.mouseDropped; if (button) ++c.buttonDropped; }
++}
++inline int gxWebWindowId(GameWindow* window) { return window ? window->winGetWindowId() : 0; }
++// Read the main runtime thread's own SDL error buffer, without clearing it.
++inline void gxWebMainSdlError(void* output) {
++    SDL_strlcpy(static_cast<char*>(output), SDL_GetError(), 256);
++}
++inline void gxWebInputSample(bool active) {
++    GxWebInputCounters& c = gxWebInputCounters();
++    if (!c.checked) {
++        c.enabled = MAIN_THREAD_EM_ASM_INT({ return !!window.gxDiagnostics?.enabled; });
++        c.checked = true;
++        SDL_GXSetInputDiagnosticsEnabled(c.enabled);
++    }
++    if (!c.enabled) return;
++    ++c.updates;
++    Uint64 now = SDL_GetTicks();
++    if (now - c.sampledAt < 5000) return;
++    c.sampledAt = now;
++    // Runtime kill switch is checked only at sample frequency, never per input.
++    if (!MAIN_THREAD_EM_ASM_INT({ return !!window.gxDiagnostics?.enabled; })) {
++        c.enabled = false;
++        SDL_GXSetInputDiagnosticsEnabled(false);
++        return;
++    }
++    char workerError[256], mainError[256] = {};
++    SDL_strlcpy(workerError, SDL_GetError(), sizeof(workerError));
++    static em_proxying_queue* queue = em_proxying_queue_create();
++    bool mainErrorSampled = queue && emscripten_proxy_sync(queue,
++        emscripten_main_runtime_thread_id(), gxWebMainSdlError, mainError);
++    Uint32 internal[13] = {};
++    SDL_GXGetInputDiagnostics(internal);
++    // This public count excludes SDL's sentinel and does not dequeue events.
++    int queued = SDL_PeepEvents(nullptr, 0, SDL_PEEKEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST);
++    SDL_EventFilter filter = nullptr;
++    void* filterData = nullptr;
++    bool hasFilter = SDL_GetEventFilter(&filter, &filterData);
++    const SDL_EventType inputTypes[] = {SDL_EVENT_MOUSE_MOTION, SDL_EVENT_MOUSE_BUTTON_DOWN,
++        SDL_EVENT_MOUSE_BUTTON_UP, SDL_EVENT_MOUSE_WHEEL, SDL_EVENT_KEY_DOWN, SDL_EVENT_KEY_UP};
++    unsigned enabledTypes = 0;
++    for (unsigned i = 0; i < 6; ++i) if (SDL_EventEnabled(inputTypes[i])) enabledTypes |= 1u << i;
++    // dlmalloc's mallinfo walks free lists; sample allocator usage only every 30s.
++    static unsigned used = 0, free = 0, arena = 0;
++    if (c.sequence % 6 == 0) {
++        struct mallinfo memory = mallinfo();
++        used = memory.uordblks; free = memory.fordblks; arena = memory.arena;
++    }
++    const MouseIO* mouse = TheMouse ? TheMouse->getMouseStatus() : nullptr;
++    const unsigned values[] = {
++       (unsigned)now, c.updates, c.polled, c.mouseIn, c.mouseOut, c.mouseDropped,
++       c.buttonIn, c.buttonOut, c.buttonDropped, c.keyIn, c.keyOut, c.keyDropped,
++       (unsigned)active, TheGameLogic ? TheGameLogic->getFrame() : 0,
++       TheGameClient ? TheGameClient->getFrame() : 0,
++       (unsigned)(TheInGameUI ? TheInGameUI->getInputEnabled() : true),
++       (unsigned)(TheGameLogic ? TheGameLogic->isGamePaused() : false),
++       (unsigned)(TheWindowManager ? gxWebWindowId(TheWindowManager->winGetCapture()) : 0),
++       (unsigned)(TheWindowManager ? gxWebWindowId(TheWindowManager->winGetGrabWindow()) : 0),
++       (unsigned)(TheWindowManager ? gxWebWindowId(TheWindowManager->winGetFocus()) : 0),
++       (unsigned)(mouse ? mouse->leftState : 0), (unsigned)(mouse ? mouse->rightState : 0),
++       (unsigned)SDL_GetMouseState(nullptr, nullptr), (unsigned)(SDL_GetKeyboardFocus() != nullptr),
++       c.pollCalls, c.missingWindow, (unsigned)queued, (unsigned)hasFilter, enabledTypes,
++       // Pages avoid wasm32's 4GiB size_t wrap; JS reconstructs exact bytes.
++       (unsigned)EM_ASM_DOUBLE({ return HEAPU8.buffer.byteLength / 65536; }), used, free, arena,
++       internal[0], internal[1], internal[2], internal[3], internal[4], internal[5],
++       internal[6], internal[7], internal[8], internal[9], c.sequence++, (unsigned)mainErrorSampled, internal[10], internal[11], internal[12]
++    };
++    MAIN_THREAD_EM_ASM({
++        if (!window.gxDiagnostics?.enabled) return;
++        try {
++            const v = Array.from(HEAPU32.subarray($0 >>> 2, ($0 >>> 2) + 48));
++            window.gxDiagnostics.engine({
++                ticksMs: v[0], updates: v[1], polled: v[2], mouseIn: v[3], mouseOut: v[4],
++                mouseDropped: v[5], buttonIn: v[6], buttonOut: v[7], buttonDropped: v[8],
++                keyIn: v[9], keyOut: v[10], keyDropped: v[11], active: !!v[12],
++                logicFrame: v[13], clientFrame: v[14], inputEnabled: !!v[15], paused: !!v[16],
++                captureWindow: v[17], grabWindow: v[18], focusWindow: v[19],
++                leftState: v[20], rightState: v[21], sdlButtons: v[22],
++                sdlKeyboardFocus: !!v[23], pollCalls: v[24], missingWindow: v[25],
++                sdlQueued: v[26] | 0, sdlHasFilter: !!v[27], sdlEnabledTypes: v[28],
++                wasmHeapBytes: v[29] * 65536, allocatorUsedBytes: v[30],
++                allocatorFreeBytes: v[31], allocatorArenaBytes: v[32], allocatorAgeMs: (v[43] % 6) * 5000,
++                sdlInternal: {pushAttempts: v[33], filterRejected: v[34], enqueued: v[35],
++                    enqueueFailed: v[36], queueFull: v[37], allocationFailed: v[38],
++                    inactivePeep: v[39], pollCalls: v[40], sentinels: v[41], active: !!v[42], queueCount: v[45],
++                    hasHead: !!v[46], hasTail: !!v[47]},
++                sampleSequence: v[43], mainErrorSampled: !!v[44],
++                map: UTF8ToString($1)
++            });
++            // The recorder sanitizes error strings and applies a bounded budget.
++            const workerError = UTF8ToString($2);
++            const mainError = UTF8ToString($3);
++            if (workerError) window.gxDiagnostics.log('sdl.error.worker', workerError);
++            if (mainError) window.gxDiagnostics.log('sdl.error.main', mainError);
++        } catch (error) { console.error('[diagnostics] engine sample failed', error); }
++    }, values, TheGlobalData ? TheGlobalData->m_mapName.str() : "", workerError, mainError);
++}
++#endif
+diff --git a/Core/Libraries/Source/WWVegas/WW3D2/render2dsentence.cpp b/Core/Libraries/Source/WWVegas/WW3D2/render2dsentence.cpp
+index 8211055..e23e625 100644
+--- a/Core/Libraries/Source/WWVegas/WW3D2/render2dsentence.cpp
++++ b/Core/Libraries/Source/WWVegas/WW3D2/render2dsentence.cpp
+@@ -34,6 +34,7 @@
+  * Functions:                                                                                  *
+  * - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - */
+ 
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include "render2dsentence.h"
+ #include "surfaceclass.h"
+ #include "texture.h"
+@@ -1227,16 +1228,6 @@ FontCharsClass::Get_Char_Data (WCHAR ch)
+ 	}
+  	else if ( AlternateUnicodeFont && this != AlternateUnicodeFont )
+ 	{
+-		// GeneralsX @bugfix fbraz 03/06/2026 Log ALL Cyrillic delegations for diagnostics
+-		if (ch >= 0x0400 && ch <= 0x04FF) {
+-			char log_buffer[512];
+-			sprintf(log_buffer,
+-				"[GX-ISSUE144] Get_Char_Data delegate U+%04X from=%s to=%s",
+-				(unsigned int)ch,
+-				GDIFontName.str(),
+-				AlternateUnicodeFont->GDIFontName.str());
+-			fprintf(stderr, "%s\n", log_buffer);
+-		}
+ 		return AlternateUnicodeFont->Get_Char_Data( glyph );
+ 	}
+ 	else
+@@ -1842,18 +1833,6 @@ FontCharsClass::Create_Freetype_Font (const char *font_name)
+ 		return false;
+ 	}
+ 
+-	// GeneralsX @bugfix fbraz 03/06/2026 Log FreeType font details for Cyrillic font issue
+-	{
+-		char log_buffer[512];
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Freetype path=%s name=%s family=%s num_glyphs=%ld has_Cyrillic_Caps=%s",
+-			font_path,
+-			font_name,
+-			FTFace->family_name ? FTFace->family_name : "<null>",
+-			FTFace->num_glyphs,
+-			FT_Get_Char_Index(FTFace, 0x0410) != 0 ? "YES" : "NO");
+-		fprintf(stderr, "%s\n", log_buffer);
+-	}
+ 
+ 	if ( doingGenerals ) {
+ 		CharOverhang = 0;
+@@ -1884,16 +1863,6 @@ FontCharsClass::Store_Freetype_Char (WCHAR ch)
+ 	//
+ 	FT_UInt glyph_index = FT_Get_Char_Index( FTFace, ch );
+ 
+-	// GeneralsX @bugfix fbraz 03/06/2026 Log ALL Cyrillic character rendering attempts
+-	if (ch >= 0x0400 && ch <= 0x04FF) {
+-		char log_buffer[512];
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Store_Freetype_Char U+%04X glyph_idx=%u font=%s",
+-			(unsigned int)ch,
+-			(unsigned int)glyph_index,
+-			GDIFontName.str());
+-		fprintf(stderr, "%s\n", log_buffer);
+-	}
+ 
+ 	//
+ 	//	Load the glyph (without rendering yet)
 diff --git a/Core/Libraries/Source/d3d8webgl/src/d3d8webgl.cpp b/Core/Libraries/Source/d3d8webgl/src/d3d8webgl.cpp
-index bc5542d..743c149 100644
+index bc5542d..bb8b693 100644
 --- a/Core/Libraries/Source/d3d8webgl/src/d3d8webgl.cpp
 +++ b/Core/Libraries/Source/d3d8webgl/src/d3d8webgl.cpp
-@@ -1351,6 +1351,12 @@ private:
+@@ -279,6 +279,8 @@ public:
+ 
+ 	~WebGLTexture()
+ 	{
++		// GeneralsX @bugfix Codex 16/10/2026 Release GPU ownership with the final COM reference.
++		if (m_gl.name || m_gl.fbo) WebGLPipeline::get()->releaseTexture(m_gl);
+ 		for (WebGLSurface *s : m_levels) {
+ 			delete s; // privately owned; public refcount does not delete these
+ 		}
+@@ -559,6 +561,8 @@ public:
+ 	{
+ 		m_bits.resize(length);
+ 	}
++	// GeneralsX @bugfix Codex 16/10/2026 Free uploaded buffers when their COM resource dies.
++	~WebGLVertexBuffer() { if (m_gl.name) glDeleteBuffers(1, &m_gl.name); }
+ 
+ 	D3D8WEBGL_IUNKNOWN_IMPL(WebGLVertexBuffer)
+ 
+@@ -614,6 +618,8 @@ public:
+ 	{
+ 		m_bits.resize(length);
+ 	}
++	// GeneralsX @bugfix Codex 16/10/2026 Free uploaded buffers when their COM resource dies.
++	~WebGLIndexBuffer() { if (m_gl.name) glDeleteBuffers(1, &m_gl.name); }
+ 
+ 	D3D8WEBGL_IUNKNOWN_IMPL(WebGLIndexBuffer)
+ 
+@@ -971,8 +977,13 @@ public:
+ 	HRESULT SetRenderTarget(IDirect3DSurface8 *pRenderTarget, IDirect3DSurface8 *pNewZStencil) override
+ 	{
+ 		if (pRenderTarget) {
++			// GeneralsX @bugfix Codex 16/10/2026 A bound level surface must keep its owning texture alive.
++			WebGLTexture *owner = static_cast<WebGLSurface *>(pRenderTarget)->m_ownerTex;
++			if (owner) owner->AddRef();
+ 			pRenderTarget->AddRef();
+ 			if (m_currentRT) m_currentRT->Release();
++			if (m_currentRTOwner) m_currentRTOwner->Release();
++			m_currentRTOwner = owner;
+ 			m_currentRT = static_cast<WebGLSurface *>(pRenderTarget);
+ 
+ 			if (m_currentRT == m_backBuffer) {
+@@ -1351,6 +1362,12 @@ private:
  
  	void createBackBuffers()
  	{
@@ -15,11 +495,42 @@ index bc5542d..743c149 100644
  		m_backBuffer = new WebGLSurface(this, m_pp.BackBufferWidth, m_pp.BackBufferHeight,
  		                                m_pp.BackBufferFormat, D3DRTYPE_SURFACE);
  		if (m_pp.EnableAutoDepthStencil) {
+@@ -1361,7 +1378,10 @@ private:
+ 
+ 	void releaseBackBuffers()
+ 	{
++		// GeneralsX @bugfix Codex 16/10/2026 Reset/destruction release the bound texture after its level view.
++		if (m_currentRTOwner) WebGLPipeline::get()->setRenderTarget(this, nullptr);
+ 		if (m_currentRT) { m_currentRT->Release(); m_currentRT = nullptr; }
++		if (m_currentRTOwner) { m_currentRTOwner->Release(); m_currentRTOwner = nullptr; }
+ 		if (m_currentDS) { m_currentDS->Release(); m_currentDS = nullptr; }
+ 		if (m_backBuffer) { m_backBuffer->Release(); m_backBuffer = nullptr; }
+ 		if (m_depthStencil) { m_depthStencil->Release(); m_depthStencil = nullptr; }
+@@ -1382,6 +1402,7 @@ private:
+ 	WebGLSurface *m_backBuffer = nullptr;
+ 	WebGLSurface *m_depthStencil = nullptr;
+ 	WebGLSurface *m_currentRT = nullptr;
++	WebGLTexture *m_currentRTOwner = nullptr;
+ 	WebGLSurface *m_currentDS = nullptr;
+ 	WINBOOL m_cursorShown = FALSE;
+ 
 diff --git a/Core/Libraries/Source/d3d8webgl/src/webgl_pipeline.cpp b/Core/Libraries/Source/d3d8webgl/src/webgl_pipeline.cpp
-index 62c37da..1a795d1 100644
+index 62c37da..8424bf0 100644
 --- a/Core/Libraries/Source/d3d8webgl/src/webgl_pipeline.cpp
 +++ b/Core/Libraries/Source/d3d8webgl/src/webgl_pipeline.cpp
-@@ -587,8 +587,9 @@ WebGLPipeline::ProgramInfo *WebGLPipeline::getProgram(WebGLDevice *dev, unsigned
+@@ -518,7 +518,10 @@ WebGLPipeline::ProgramInfo *WebGLPipeline::getProgram(WebGLDevice *dev, unsigned
+ {
+ 	const uint64_t key = computeProgramKey(dev, fvf);
+ 	for (int i = 0; i < m_programCount; i++) {
+-		if (m_programs[i].key == key) return m_programs[i].prog;
++		if (m_programs[i].key == key) {
++			m_programs[i].lastUsed = ++m_programUse;
++			return m_programs[i].prog;
++		}
+ 	}
+ 
+ 	FVFLayout l;
+@@ -587,8 +590,9 @@ WebGLPipeline::ProgramInfo *WebGLPipeline::getProgram(WebGLDevice *dev, unsigned
  		vs += "  vec4 wpos = uWorld * vec4(aPos, 1.0);\n";
  		vs += "  vec4 vpos = uView * wpos;\n";
  		vs += "  vec4 cpos = uProj * vpos;\n";
@@ -31,7 +542,38 @@ index 62c37da..1a795d1 100644
  		vs += "  vFogDepth = -vpos.z;\n";
  	}
  	// Diffuse color: vertex color (BGRA attribute swizzle) / lighting / white.
-@@ -1034,9 +1035,8 @@ void WebGLPipeline::applyFixedState(WebGLDevice *dev)
+@@ -758,14 +762,24 @@ WebGLPipeline::ProgramInfo *WebGLPipeline::getProgram(WebGLDevice *dev, unsigned
+ 	info->stageXform[1] = st[1].xform;
+ 	info->stagesUsed = stagesUsed;
+ 
++	// GeneralsX @bugfix Codex 16/10/2026 Every shader program stays owned by the bounded cache.
++	// Uncached overflow programs used to be rebuilt and leaked on every draw.
++	int slot;
+ 	if (m_programCount < kMaxPrograms) {
+-		m_programs[m_programCount].key = key;
+-		m_programs[m_programCount].prog = info;
+-		m_programCount++;
+-		GLTRACE("program cached (%d total), key=%llx", m_programCount, (unsigned long long)key);
++		slot = m_programCount++;
+ 	} else {
+-		WARN_ONCE(s_progOverflow, "program cache overflow (>%d)", kMaxPrograms);
+-	}
++		slot = 0;
++		for (int i = 1; i < m_programCount; ++i) {
++			if (m_programs[i].lastUsed < m_programs[slot].lastUsed) slot = i;
++		}
++		// drawCommon only keeps this pointer for its current draw. A bound
++		// victim is retired by GL when applyUniforms binds the new program.
++		ProgramInfo *victim = m_programs[slot].prog;
++		if (victim->prog) glDeleteProgram(victim->prog);
++		delete victim;
++	}
++	m_programs[slot] = {key, info, ++m_programUse};
++	GLTRACE("program cached (%d total), key=%llx", m_programCount, (unsigned long long)key);
+ 	return info;
+ }
+ 
+@@ -1034,9 +1048,8 @@ void WebGLPipeline::applyFixedState(WebGLDevice *dev)
  		glDisable(GL_BLEND);
  	}
  
@@ -43,7 +585,7 @@ index 62c37da..1a795d1 100644
  	switch (dev->getRenderState(D3DRS_CULLMODE)) {
  	case D3DCULL_CW:
  		glEnable(GL_CULL_FACE);
-@@ -1081,15 +1081,11 @@ void WebGLPipeline::applyFixedState(WebGLDevice *dev)
+@@ -1081,15 +1094,11 @@ void WebGLPipeline::applyFixedState(WebGLDevice *dev)
  		glDisable(GL_STENCIL_TEST);
  	}
  
@@ -63,7 +605,7 @@ index 62c37da..1a795d1 100644
  	glDepthRangef(vp.MinZ, vp.MaxZ);
  }
  
-@@ -1371,8 +1367,9 @@ void WebGLPipeline::clear(WebGLDevice *dev, unsigned flags, uint32_t argb, float
+@@ -1371,8 +1380,9 @@ void WebGLPipeline::clear(WebGLDevice *dev, unsigned flags, uint32_t argb, float
  	                   (int)vp.Width == m_curRTWidth && (int)vp.Height == m_curRTHeight);
  	if (!full) {
  		glEnable(GL_SCISSOR_TEST);
@@ -75,7 +617,7 @@ index 62c37da..1a795d1 100644
  	}
  
  	GLbitfield mask = 0;
-@@ -1452,9 +1449,8 @@ void WebGLPipeline::setRenderTarget(WebGLDevice * /*dev*/, WebGLTexture *tex)
+@@ -1452,13 +1462,26 @@ void WebGLPipeline::setRenderTarget(WebGLDevice * /*dev*/, WebGLTexture *tex)
  	m_curFBO = tex->m_gl.fbo;
  	m_curRTWidth = w;
  	m_curRTHeight = h;
@@ -87,11 +629,38 @@ index 62c37da..1a795d1 100644
  	// Rendered content supersedes the CPU shadow from now on.
  	tex->m_gl.dirty = false;
  }
+ 
++// GeneralsX @bugfix Codex 16/10/2026 Retire texture/FBO handles and invalidate a deleted render target.
++void WebGLPipeline::releaseTexture(GLTextureState &texture)
++{
++	if (texture.fbo) {
++		if (m_curFBO == texture.fbo) setRenderTarget(nullptr, nullptr);
++		glDeleteFramebuffers(1, &texture.fbo);
++		texture.fbo = 0;
++	}
++	if (texture.name) {
++		glDeleteTextures(1, &texture.name);
++		texture.name = 0;
++	}
++}
++
+ void WebGLPipeline::present()
+ {
+ 	if (!m_ctxReady) return;
 diff --git a/Core/Libraries/Source/d3d8webgl/src/webgl_pipeline.h b/Core/Libraries/Source/d3d8webgl/src/webgl_pipeline.h
-index d931839..6a33055 100644
+index d931839..bd52edc 100644
 --- a/Core/Libraries/Source/d3d8webgl/src/webgl_pipeline.h
 +++ b/Core/Libraries/Source/d3d8webgl/src/webgl_pipeline.h
-@@ -108,7 +108,7 @@ private:
+@@ -76,6 +76,8 @@ public:
+ 
+ 	// Render-target switch: tex==nullptr selects the canvas backbuffer.
+ 	void setRenderTarget(WebGLDevice *dev, WebGLTexture *tex);
++	// GeneralsX @bugfix Codex 16/10/2026 Retire the GL objects owned by a texture.
++	void releaseTexture(GLTextureState &texture);
+ 
+ 	bool hasS3TC() const { return m_hasS3TC; }
+ 
+@@ -108,7 +110,7 @@ private:
  	GLuint m_curFBO = 0;
  	int m_curRTWidth = 0;
  	int m_curRTHeight = 0;
@@ -100,6 +669,18 @@ index d931839..6a33055 100644
  	GLuint m_depthRB = 0; // shared depth-stencil renderbuffer for FBOs
  	int m_depthRBW = 0, m_depthRBH = 0;
  
+@@ -121,9 +123,11 @@ private:
+ 	struct CacheEntry {
+ 		uint64_t key;
+ 		ProgramInfo *prog;
++		uint64_t lastUsed;
+ 	};
+ 	CacheEntry m_programs[kMaxPrograms];
+ 	int m_programCount = 0;
++	uint64_t m_programUse = 0;
+ 
+ 	unsigned m_frame = 0;
+ };
 diff --git a/Generals/Code/GameEngineDevice/Include/SDL3Device/GameClient/SDL3Mouse.h b/Generals/Code/GameEngineDevice/Include/SDL3Device/GameClient/SDL3Mouse.h
 index c02f57d..49d9eb4 100644
 --- a/Generals/Code/GameEngineDevice/Include/SDL3Device/GameClient/SDL3Mouse.h
@@ -116,7 +697,7 @@ index c02f57d..49d9eb4 100644
  	Bool m_LostFocus;             // GeneralsX @bugfix felipebraz 18/02/2026 Track window focus state
  
 diff --git a/Generals/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Keyboard.cpp b/Generals/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Keyboard.cpp
-index 8f2fa9d..4e16c23 100644
+index 8f2fa9d..d6d919f 100644
 --- a/Generals/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Keyboard.cpp
 +++ b/Generals/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Keyboard.cpp
 @@ -27,6 +27,8 @@
@@ -132,8 +713,8 @@ index 8f2fa9d..4e16c23 100644
  
  	// Get keyboard event from buffer
  	const SDL_KeyboardEvent& keyEvent = m_eventBuffer[m_nextGetIndex].key;
-+#ifdef __EMSCRIPTEN__
-+	++gxWebInputCounters().keyOut;
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++	if (gxWebInputCounters().enabled) ++gxWebInputCounters().keyOut;
 +#endif
  
  	// Translate SDL3 key code to game KeyDefType
@@ -142,20 +723,20 @@ index 8f2fa9d..4e16c23 100644
  		return;
  	}
  
-+	#ifdef __EMSCRIPTEN__
-+	++gxWebInputCounters().keyIn;
++	#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++	if (gxWebInputCounters().enabled) ++gxWebInputCounters().keyIn;
 +	#endif
  	// Check if buffer is full
  	UnsignedInt nextFreeIndex = (m_nextFreeIndex + 1) % MAX_SDL3_KEY_EVENTS;
  	if (nextFreeIndex == m_nextGetIndex) {
-+#ifdef __EMSCRIPTEN__
-+		++gxWebInputCounters().keyDropped;
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++		if (gxWebInputCounters().enabled) ++gxWebInputCounters().keyDropped;
 +#endif
  		fprintf(stderr, "WARNING: SDL3Keyboard::addSDLEvent() buffer full (dropped event)\n");
  		return;
  	}
 diff --git a/Generals/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Mouse.cpp b/Generals/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Mouse.cpp
-index e759fc4..7cec399 100644
+index e759fc4..55d6247 100644
 --- a/Generals/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Mouse.cpp
 +++ b/Generals/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Mouse.cpp
 @@ -27,10 +27,15 @@
@@ -223,7 +804,7 @@ index e759fc4..7cec399 100644
  	// Translate SDL_Event to MouseIO
  	// GeneralsX @refactor felipebraz 16/02/2026 Use unified translateEvent()
  	translateEvent(m_nextGetIndex, result);
-+#ifdef __EMSCRIPTEN__
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
 +	gxWebMouseEvent(m_eventBuffer[m_nextGetIndex], 1);
 +#endif
  
@@ -233,20 +814,20 @@ index e759fc4..7cec399 100644
  		return;  // Not a mouse event, ignore
  	}
  
-+	#ifdef __EMSCRIPTEN__
++	#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
 +	gxWebMouseEvent(*event, 0);
 +	#endif
  	// Check if buffer is full
  	UnsignedInt nextFreeIndex = (m_nextFreeIndex + 1) % MAX_SDL3_MOUSE_EVENTS;
  	if (nextFreeIndex == m_nextGetIndex) {
-+#ifdef __EMSCRIPTEN__
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
 +		gxWebMouseEvent(*event, 2);
 +#endif
  		// GeneralsX @bugfix BenderAI 18/02/2026 Temporarily disable debug logging (Phase 1.8)
  		// fprintf(stderr, "WARNING: SDL3Mouse::addSDLEvent() buffer full (dropped event)\n");
  		return;
 diff --git a/Generals/Code/GameEngineDevice/Source/SDL3GameEngine.cpp b/Generals/Code/GameEngineDevice/Source/SDL3GameEngine.cpp
-index 71d57e5..f0278cb 100644
+index 71d57e5..716e581 100644
 --- a/Generals/Code/GameEngineDevice/Source/SDL3GameEngine.cpp
 +++ b/Generals/Code/GameEngineDevice/Source/SDL3GameEngine.cpp
 @@ -28,6 +28,8 @@
@@ -262,22 +843,501 @@ index 71d57e5..f0278cb 100644
  {
  	pollSDL3Events();
  	GameEngine::update();
-+#ifdef __EMSCRIPTEN__
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
 +	gxWebInputSample(m_IsActive);
 +#endif
  }
  
  /**
-@@ -265,6 +270,9 @@ void SDL3GameEngine::pollSDL3Events(void)
+@@ -257,7 +262,13 @@ void SDL3GameEngine::setIsActive(Bool isActive)
+  */
+ void SDL3GameEngine::pollSDL3Events(void)
+ {
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++	if (gxWebInputCounters().enabled) ++gxWebInputCounters().pollCalls;
++#endif
+ 	if (!m_SDLWindow) {
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++		if (gxWebInputCounters().enabled) ++gxWebInputCounters().missingWindow;
++#endif
+ 		return;
+ 	}
+ 
+@@ -265,6 +276,9 @@ void SDL3GameEngine::pollSDL3Events(void)
  
  	SDL_Event event;
  	while (SDL_PollEvent(&event)) {
-+#ifdef __EMSCRIPTEN__
-+		++gxWebInputCounters().polled;
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++		if (gxWebInputCounters().enabled) ++gxWebInputCounters().polled;
 +#endif
  		switch (event.type) {
  			case SDL_EVENT_QUIT:
  				m_quitting = true;
+diff --git a/GeneralsMD/Code/GameEngine/Source/GameClient/Drawable.cpp b/GeneralsMD/Code/GameEngine/Source/GameClient/Drawable.cpp
+index fb8b6aa..ef1ca54 100644
+--- a/GeneralsMD/Code/GameEngine/Source/GameClient/Drawable.cpp
++++ b/GeneralsMD/Code/GameEngine/Source/GameClient/Drawable.cpp
+@@ -27,6 +27,7 @@
+ // Author: Michael S. Booth, March 2001
+ ///////////////////////////////////////////////////////////////////////////////////////////////////
+ 
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+ 
+ #include <Utility/intrin_compat.h>	// For _isnan compatibility
+@@ -116,13 +117,10 @@ static_assert(ARRAY_SIZE(TheDrawableIconNames) == MAX_ICONS + 1, "Incorrect arra
+ // GeneralsX @test FelipeBraz 03/06/2026 TEST: Hardcode Arial Unicode MS to verify 3D rendering
+ static GameFont *ResolveDrawableCaptionFont()
+ {
+-	char log_buffer[512];
+ 	GameFont *font = nullptr;
+ 
+ 	if (TheFontLibrary == nullptr || TheInGameUI == nullptr)
+ 	{
+-		sprintf(log_buffer, "[GX-ISSUE144] Drawable ResolveCaptionFont missing TheFontLibrary=%p TheInGameUI=%p", TheFontLibrary, TheInGameUI);
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return nullptr;
+ 	}
+ 
+@@ -132,14 +130,9 @@ static GameFont *ResolveDrawableCaptionFont()
+ 
+ 	// TEST: hardcode Arial Unicode MS
+ 	font = TheFontLibrary->getFont("Arial Unicode MS", pointSize, bold);
+-	sprintf(log_buffer, "[GX-ISSUE144] TEST ResolveCaptionFont Arial Unicode MS %s pointSize=%d bold=%d",
+-		font ? "HIT" : "MISS", pointSize, bold);
+-	fprintf(stderr, "%s\n", log_buffer);
+ 	if (font) return font;
+ 
+ 	font = TheFontLibrary->getFont("Arial", pointSize, bold);
+-	sprintf(log_buffer, "[GX-ISSUE144] TEST ResolveCaptionFont Arial %s pointSize=%d bold=%d",
+-		font ? "HIT" : "MISS", pointSize, bold);
+ 	return font;
+ }
+ 
+@@ -398,13 +391,6 @@ Drawable::Drawable( const ThingTemplate *thingTemplate, DrawableStatusBits statu
+ 	{
+ 		GameFont *ctorFont = ResolveDrawableCaptionFont();
+ 		m_constructDisplayString->setFont(ctorFont);
+-		{
+-			char _lb[256];
+-			sprintf(_lb, "[GX-ISSUE144] Drawable ctor constructDS font=%s size=%d",
+-				ctorFont ? ctorFont->nameString.str() : "NULL",
+-				ctorFont ? ctorFont->pointSize : -1);
+-			fprintf(stderr, "%s\n", _lb);
+-		}
+ 	}
+ 
+ 	m_ambientSound = nullptr;
+@@ -3668,7 +3654,6 @@ void Drawable::drawDisabled(const IRegion2D* healthBarRegion)
+ //-------------------------------------------------------------------------------------------------
+ void Drawable::drawConstructPercent( const IRegion2D *healthBarRegion )
+ {
+-	char log_buffer[512];
+ 
+ 	// this data is in an attached object
+ 	Object *obj = getObject();
+@@ -3699,11 +3684,6 @@ void Drawable::drawConstructPercent( const IRegion2D *healthBarRegion )
+ 		if (m_constructDisplayString)
+ 		{
+ 			m_constructDisplayString->setFont(ResolveDrawableCaptionFont());
+-			sprintf(log_buffer,
+-				"[GX-ISSUE144] Drawable construct string allocated drawable=%p obj=%p",
+-				this,
+-				obj);
+-			fprintf(stderr, "%s\n", log_buffer);
+ 		}
+ 	}
+ 
+@@ -3712,43 +3692,12 @@ void Drawable::drawConstructPercent( const IRegion2D *healthBarRegion )
+ 	{
+ 		UnicodeString buffer;
+ 
+-		// Log the raw format string from GameText before formatting
+-		{
+-			static bool _fetchLogged = false;
+-			if (!_fetchLogged) {
+-				_fetchLogged = true;
+-				UnicodeString fetchResult = TheGameText->fetch("CONTROLBAR:UnderConstructionDesc");
+-				const WideChar *fws = fetchResult.str();
+-				char fnarrow[128] = {};
+-				for (int _fi = 0; _fi < 64 && fws[_fi]; ++_fi)
+-					fnarrow[_fi] = (fws[_fi] < 128) ? (char)fws[_fi] : '?';
+-				sprintf(log_buffer,
+-					"[GX-ISSUE144] fetch UnderConstructionDesc len=%d text=\"%s\"",
+-					fetchResult.getLength(), fnarrow);
+-				fprintf(stderr, "%s\n", log_buffer);
+-			}
+-		}
+-
+ 		buffer.format( TheGameText->fetch("CONTROLBAR:UnderConstructionDesc"), obj->getConstructionPercent());
+ 		m_constructDisplayString->setText( buffer );
+ 
+ 		// record this percent as our last displayed so we don't un-necessarily rebuild the string
+ 		m_lastConstructDisplayed = obj->getConstructionPercent();
+ 
+-		// Log actual text content (convert wchar to narrow for logging)
+-		const WideChar *ws = buffer.str();
+-		char narrow[128] = {};
+-		for (int _i = 0; _i < 64 && ws[_i]; ++_i)
+-			narrow[_i] = (ws[_i] < 128) ? (char)ws[_i] : '?';
+-		GameFont *curFont = m_constructDisplayString->getFont();
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Drawable construct text update drawable=%p pct=%g len=%d text=\"%s\" font=%s",
+-			this,
+-			(double)obj->getConstructionPercent(),
+-			buffer.getLength(),
+-			narrow,
+-			curFont ? curFont->nameString.str() : "NULL");
+-		fprintf(stderr, "%s\n", log_buffer);
+ 	}
+ 
+ 	// get center position in drawable
+@@ -3766,16 +3715,6 @@ void Drawable::drawConstructPercent( const IRegion2D *healthBarRegion )
+ 	Color color = GameMakeColor( 255, 255, 255, 255 );
+ 	Color dropColor = GameMakeColor( 0, 0, 0, 255 );
+ 	Int tw = m_constructDisplayString->getWidth();
+-	static bool _constructDrawLogged = false;
+-	if (!_constructDrawLogged) {
+-		GameFont *df = m_constructDisplayString->getFont();
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Drawable construct draw drawable=%p screen=(%d,%d) width=%d font=%s",
+-			this, screen.x, screen.y, tw,
+-			df ? df->nameString.str() : "NULL");
+-		fprintf(stderr, "%s\n", log_buffer);
+-		_constructDrawLogged = true;
+-	}
+ 	screen.x -= (tw / 2);
+ 	m_constructDisplayString->draw( screen.x, screen.y, color, dropColor );
+ 
+@@ -4355,13 +4294,10 @@ const Matrix3D *Drawable::getTransformMatrix() const
+ //-------------------------------------------------------------------------------------------------
+ void Drawable::setCaptionText( const UnicodeString& captionText )
+ {
+-	char log_buffer[512];
+ 
+ 	if (captionText.isEmpty())
+ 	{
+ 		clearCaptionText();
+-		sprintf(log_buffer, "[GX-ISSUE144] Drawable caption clear-request drawable=%p", this);
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return;
+ 	}
+ 
+@@ -4374,12 +4310,6 @@ void Drawable::setCaptionText( const UnicodeString& captionText )
+ 		GameFont *font = ResolveDrawableCaptionFont();
+ 		m_captionDisplayString->setFont( font );
+ 		m_captionDisplayString->setText( sanitizedString );
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Drawable caption new drawable=%p textLength=%d font=%p",
+-			this,
+-			sanitizedString.getLength(),
+-			font);
+-		fprintf(stderr, "%s\n", log_buffer);
+ 	}
+ 	else
+ 	{
+@@ -4387,11 +4317,6 @@ void Drawable::setCaptionText( const UnicodeString& captionText )
+ 		if( m_captionDisplayString->getText().compare(sanitizedString) != 0 )
+ 		{
+ 			m_captionDisplayString->setText( sanitizedString );
+-			sprintf(log_buffer,
+-				"[GX-ISSUE144] Drawable caption update drawable=%p textLength=%d",
+-				this,
+-				sanitizedString.getLength());
+-			fprintf(stderr, "%s\n", log_buffer);
+ 		}
+ 	}
+ }
+diff --git a/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/ControlBar/ControlBarUnderConstruction.cpp b/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/ControlBar/ControlBarUnderConstruction.cpp
+index 1de36d9..6cbd40d 100644
+--- a/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/ControlBar/ControlBarUnderConstruction.cpp
++++ b/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/ControlBar/ControlBarUnderConstruction.cpp
+@@ -28,6 +28,7 @@
+ ///////////////////////////////////////////////////////////////////////////////////////////////////
+ 
+ // USER INCLUDES //////////////////////////////////////////////////////////////////////////////////
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+ 
+ #include <stdio.h>
+@@ -49,8 +50,6 @@
+ //-------------------------------------------------------------------------------------------------
+ void ControlBar::updateConstructionTextDisplay( Object *obj )
+ {
+-	// GeneralsX @tweak GitHubCopilot 27/05/2026 Trace under-construction text key usage and formatted output updates.
+-	char log_buffer[512];
+ 	UnicodeString text;
+ 	static UnsignedInt descID = TheNameKeyGenerator->nameToKey( "ControlBar.wnd:UnderConstructionDesc" );
+ 	GameWindow *descWindow = TheWindowManager->winGetWindowFromId( nullptr, descID );
+@@ -62,13 +61,6 @@ void ControlBar::updateConstructionTextDisplay( Object *obj )
+ 	text.format( TheGameText->fetch( "CONTROLBAR:UnderConstructionDesc" ),
+ 							 obj->getConstructionPercent() );
+ 	GadgetStaticTextSetText( descWindow, text );
+-	sprintf(log_buffer,
+-		"[GX-ISSUE144] UnderConstruction text update obj=%p percent=%d textLen=%d descWindow=%p",
+-		obj,
+-		obj->getConstructionPercent(),
+-		text.getLength(),
+-		descWindow);
+-	fprintf(stderr, "%s\n", log_buffer);
+ 
+ 	// record this as the last percentage displayed
+ 	m_displayedConstructPercent = obj->getConstructionPercent();
+diff --git a/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GUICallbacks/ControlBarPopupDescription.cpp b/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GUICallbacks/ControlBarPopupDescription.cpp
+index 7a5a996..1947f5b 100644
+--- a/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GUICallbacks/ControlBarPopupDescription.cpp
++++ b/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GUICallbacks/ControlBarPopupDescription.cpp
+@@ -46,6 +46,7 @@
+ //-----------------------------------------------------------------------------
+ // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
+ //-----------------------------------------------------------------------------
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include <stdio.h>
+ 
+ //-----------------------------------------------------------------------------
+@@ -130,22 +131,9 @@ void ControlBarPopupDescriptionUpdateFunc( WindowLayout *layout, void *param )
+ 
+ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
+ {
+-	// GeneralsX @tweak GitHubCopilot 27/05/2026 Trace command tooltip population and cost-line visibility decisions.
+-	char log_buffer[512];
+-	sprintf(log_buffer,
+-		"[GX-ISSUE144] Tooltip show request cmdWindow=%p prevWindow=%p hidden=%d",
+-		cmdButton,
+-		prevWindow,
+-		m_buildToolTipLayout ? m_buildToolTipLayout->isHidden() : -1);
+-	fprintf(stderr, "%s\n", log_buffer);
+ 
+ 	if (TheInGameUI->areTooltipsDisabled() 	|| TheScriptEngine->isGameEnding())
+ 	{
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Tooltip show blocked tooltipsDisabled=%d gameEnding=%d",
+-			TheInGameUI->areTooltipsDisabled(),
+-			TheScriptEngine->isGameEnding());
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return;
+ 	}
+ 
+@@ -196,8 +184,6 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
+ 
+ 	if(!cmdButton)
+ 	{
+-		sprintf(log_buffer, "[GX-ISSUE144] Tooltip show aborted null cmdButton");
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return;
+ 	}
+ 	if(BitIsSet(cmdButton->winGetStyle(), GWS_PUSH_BUTTON))
+@@ -206,8 +192,6 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
+ 
+ 		if(!commandButton)
+ 		{
+-			sprintf(log_buffer, "[GX-ISSUE144] Tooltip show aborted missing CommandButton window=%p", cmdButton);
+-			fprintf(stderr, "%s\n", log_buffer);
+ 			return;
+ 		}
+ 
+@@ -234,12 +218,6 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
+ 		//	m_buildToolTipLayout = TheWindowManager->winCreateLayout( "ControlBarPopupDescription.wnd" );
+ 		//	m_buildToolTipLayout->setUpdate(ControlBarPopupDescriptionUpdateFunc);
+ 
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Tooltip show command=%s textLabel=%s descriptionLabel=%s",
+-			commandButton->getName().str(),
+-			commandButton->getTextLabel().str(),
+-			commandButton->getDescriptionLabel().str());
+-		fprintf(stderr, "%s\n", log_buffer);
+ 
+ 		populateBuildTooltipLayout(commandButton);
+ 	}
+@@ -248,8 +226,6 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
+ 		// we're a generic window
+ 		if(!BitIsSet(cmdButton->winGetStyle(), GWS_USER_WINDOW) && !BitIsSet(cmdButton->winGetStyle(), GWS_STATIC_TEXT))
+ 			return;
+-		sprintf(log_buffer, "[GX-ISSUE144] Tooltip show generic window style=0x%x", cmdButton->winGetStyle());
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		populateBuildTooltipLayout(nullptr, cmdButton);
+ 	}
+ 	m_buildToolTipLayout->hide(FALSE);
+@@ -267,52 +243,30 @@ void ControlBar::showBuildTooltipLayout( GameWindow *cmdButton )
+ 
+ void ControlBar::repopulateBuildTooltipLayout()
+ {
+-	char log_buffer[512];
+ 	if(!m_buildToolTipLayout)
+ 	{
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Tooltip repopulate skipped layout=null");
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return;
+ 	}
+ 	if(!prevWindow)
+ 	{
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Tooltip repopulate skipped prevWindow=null layout=%p hidden=%d",
+-			m_buildToolTipLayout,
+-			m_buildToolTipLayout->isHidden());
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return;
+ 	}
+ 	if(m_buildToolTipLayout->isHidden())
+ 	{
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Tooltip repopulate skipped layout-hidden prevWindow=%p",
+-			prevWindow);
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return;
+ 	}
+ 	if(!BitIsSet(prevWindow->winGetStyle(), GWS_PUSH_BUTTON))
+ 	{
+-		sprintf(log_buffer, "[GX-ISSUE144] Tooltip repopulate skipped non-push style=0x%x", prevWindow->winGetStyle());
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return;
+ 	}
+ 	const CommandButton *commandButton = (const CommandButton *)GadgetButtonGetData(prevWindow);
+-	sprintf(log_buffer,
+-		"[GX-ISSUE144] Tooltip repopulate command=%s",
+-		commandButton ? commandButton->getName().str() : "<null>");
+-	fprintf(stderr, "%s\n", log_buffer);
+ 	populateBuildTooltipLayout(commandButton);
+ }
+ 
+ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton, GameWindow *tooltipWin)
+ {
+-	char log_buffer[512];
+ 	if(!m_buildToolTipLayout)
+ 	{
+-		sprintf(log_buffer, "[GX-ISSUE144] Tooltip populate skipped missing layout");
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		return;
+ 	}
+ 
+@@ -326,13 +280,6 @@ void ControlBar::populateBuildTooltipLayout( const CommandButton *commandButton,
+ 
+ 	if(commandButton)
+ 	{
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] Tooltip populate command=%s type=%d textLabel=%s descriptionLabel=%s",
+-			commandButton->getName().str(),
+-			commandButton->getCommandType(),
+-			commandButton->getTextLabel().str(),
+-			commandButton->getDescriptionLabel().str());
+-		fprintf(stderr, "%s\n", log_buffer);
+ 
+ 		const ThingTemplate *thingTemplate = commandButton->getThingTemplate();
+ 		const UpgradeTemplate *upgradeTemplate = commandButton->getUpgradeTemplate();
+diff --git a/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GameWindowManager.cpp b/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GameWindowManager.cpp
+index d95dd0d..018b3e4 100644
+--- a/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GameWindowManager.cpp
++++ b/GeneralsMD/Code/GameEngine/Source/GameClient/GUI/GameWindowManager.cpp
+@@ -29,6 +29,7 @@
+ //						with to interact with the game windowing system.
+ ///////////////////////////////////////////////////////////////////////////////////////////////////
+ 
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+ 
+ #include <stdio.h>
+@@ -1381,17 +1382,8 @@ GameWindow *GameWindowManager::winCreate( GameWindow *parent,
+ 		window->winSetInstanceData( instData );
+ 
+ 	// set default font
+-	// GeneralsX @tweak GitHubCopilot 27/05/2026 Trace window default font resolution to diagnose localized font propagation.
+ 	if (TheGlobalLanguageData && TheGlobalLanguageData->m_defaultWindowFont.name.isNotEmpty())
+ 	{
+-		char log_buffer[512];
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] WinCreate default font localized name=%s size=%d bold=%d window=%p",
+-			TheGlobalLanguageData->m_defaultWindowFont.name.str(),
+-			TheGlobalLanguageData->m_defaultWindowFont.size,
+-			TheGlobalLanguageData->m_defaultWindowFont.bold,
+-			window);
+-		fprintf(stderr, "%s\n", log_buffer);
+ 
+ 		window->winSetFont( winFindFont(
+ 			TheGlobalLanguageData->m_defaultWindowFont.name,
+@@ -1400,9 +1392,6 @@ GameWindow *GameWindowManager::winCreate( GameWindow *parent,
+ 	}
+ 	else
+ 	{
+-		char log_buffer[512];
+-		sprintf(log_buffer, "[GX-ISSUE144] WinCreate default font fallback Times New Roman size=14 bold=0 window=%p", window);
+-		fprintf(stderr, "%s\n", log_buffer);
+ 		window->winSetFont( winFindFont( "Times New Roman", 14, FALSE ) );
+ 	}
+ 
+@@ -2867,14 +2856,6 @@ void GameWindowManager::assignDefaultGadgetLook( GameWindow *gadget,
+ 	{
+ 		if (TheGlobalLanguageData && TheGlobalLanguageData->m_defaultWindowFont.name.isNotEmpty())
+ 		{
+-			char log_buffer[512];
+-			sprintf(log_buffer,
+-				"[GX-ISSUE144] assignDefaultGadgetLook localized font name=%s size=%d bold=%d gadget=%p",
+-				TheGlobalLanguageData->m_defaultWindowFont.name.str(),
+-				TheGlobalLanguageData->m_defaultWindowFont.size,
+-				TheGlobalLanguageData->m_defaultWindowFont.bold,
+-				gadget);
+-			fprintf(stderr, "%s\n", log_buffer);
+ 
+ 			gadget->winSetFont( winFindFont(
+ 				TheGlobalLanguageData->m_defaultWindowFont.name,
+@@ -2883,9 +2864,6 @@ void GameWindowManager::assignDefaultGadgetLook( GameWindow *gadget,
+ 		}
+ 		else
+ 		{
+-			char log_buffer[512];
+-			sprintf(log_buffer, "[GX-ISSUE144] assignDefaultGadgetLook fallback font Times New Roman size=14 bold=0 gadget=%p", gadget);
+-			fprintf(stderr, "%s\n", log_buffer);
+ 			gadget->winSetFont( winFindFont( "Times New Roman", 14, FALSE ) );
+ 		}
+ 	}
+diff --git a/GeneralsMD/Code/GameEngine/Source/GameClient/InGameUI.cpp b/GeneralsMD/Code/GameEngine/Source/GameClient/InGameUI.cpp
+index 6ca8140..5e26914 100644
+--- a/GeneralsMD/Code/GameEngine/Source/GameClient/InGameUI.cpp
++++ b/GeneralsMD/Code/GameEngine/Source/GameClient/InGameUI.cpp
+@@ -27,6 +27,7 @@
+ // Author: Michael S. Booth, March 2001
+ ///////////////////////////////////////////////////////////////////////////////////////////////////
+ 
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include "PreRTS.h"	// This must go first in EVERY cpp file in the GameEngine
+ 
+ #include <stdio.h>
+@@ -1309,13 +1310,9 @@ InGameUI::~InGameUI()
+ //-------------------------------------------------------------------------------------------------
+ void InGameUI::init()
+ {
+-	// GeneralsX @tweak GitHubCopilot 27/05/2026 Trace final in-game UI font slots after language overrides.
+-	char log_buffer[512];
+ 
+ 	INI ini;
+ 	ini.loadFileDirectory( "Data\\INI\\InGameUI", INI_LOAD_OVERWRITE, nullptr );
+-	sprintf(log_buffer, "[GX-ISSUE144] InGameUI init loaded Data\\INI\\InGameUI");
+-	fprintf(stderr, "%s\\n", log_buffer);
+ 
+ 	//override INI values with language localized values:
+ 	if (TheGlobalLanguageData)
+@@ -1376,21 +1373,6 @@ void InGameUI::init()
+ 			m_namedTimerReadyBold = TheGlobalLanguageData->m_namedTimerCountdownReadyFont.bold;
+ 		}
+ 
+-		sprintf(log_buffer,
+-			"[GX-ISSUE144] InGameUI font override drawableCaption=%s size=%d bold=%d defaultWindow=%s size=%d bold=%d unicode=%s",
+-			m_drawableCaptionFont.str(),
+-			m_drawableCaptionPointSize,
+-			m_drawableCaptionBold,
+-			TheGlobalLanguageData->m_defaultWindowFont.name.str(),
+-			TheGlobalLanguageData->m_defaultWindowFont.size,
+-			TheGlobalLanguageData->m_defaultWindowFont.bold,
+-			TheGlobalLanguageData->m_unicodeFontName.isNotEmpty() ? TheGlobalLanguageData->m_unicodeFontName.str() : "<empty>");
+-		fprintf(stderr, "%s\\n", log_buffer);
+-	}
+-	else
+-	{
+-		sprintf(log_buffer, "[GX-ISSUE144] InGameUI init without TheGlobalLanguageData");
+-		fprintf(stderr, "%s\\n", log_buffer);
+ 	}
+ 
+ 	/**@ todo we used to put in the hint spy translator, but it's difficult
 diff --git a/GeneralsMD/Code/GameEngineDevice/Include/SDL3Device/GameClient/SDL3Mouse.h b/GeneralsMD/Code/GameEngineDevice/Include/SDL3Device/GameClient/SDL3Mouse.h
 index 4fb2b61..f17245b 100644
 --- a/GeneralsMD/Code/GameEngineDevice/Include/SDL3Device/GameClient/SDL3Mouse.h
@@ -294,7 +1354,7 @@ index 4fb2b61..f17245b 100644
  	Bool m_LostFocus;             // GeneralsX @bugfix felipebraz 18/02/2026 Track window focus state
  	
 diff --git a/GeneralsMD/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Keyboard.cpp b/GeneralsMD/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Keyboard.cpp
-index 77d1fa7..fe56900 100644
+index 77d1fa7..0b065ea 100644
 --- a/GeneralsMD/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Keyboard.cpp
 +++ b/GeneralsMD/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Keyboard.cpp
 @@ -27,6 +27,8 @@
@@ -310,8 +1370,8 @@ index 77d1fa7..fe56900 100644
  	
  	// Get keyboard event from buffer
  	const SDL_KeyboardEvent& keyEvent = m_eventBuffer[m_nextGetIndex].key;
-+#ifdef __EMSCRIPTEN__
-+	++gxWebInputCounters().keyOut;
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++	if (gxWebInputCounters().enabled) ++gxWebInputCounters().keyOut;
 +#endif
  	
  	// Translate SDL3 key code to game KeyDefType
@@ -320,20 +1380,20 @@ index 77d1fa7..fe56900 100644
  		return;
  	}
  	
-+	#ifdef __EMSCRIPTEN__
-+	++gxWebInputCounters().keyIn;
++	#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++	if (gxWebInputCounters().enabled) ++gxWebInputCounters().keyIn;
 +	#endif
  	// Check if buffer is full
  	UnsignedInt nextFreeIndex = (m_nextFreeIndex + 1) % MAX_SDL3_KEY_EVENTS;
  	if (nextFreeIndex == m_nextGetIndex) {
-+#ifdef __EMSCRIPTEN__
-+		++gxWebInputCounters().keyDropped;
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++		if (gxWebInputCounters().enabled) ++gxWebInputCounters().keyDropped;
 +#endif
  		// Buffer full, dropping event
  		return;
  	}
 diff --git a/GeneralsMD/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Mouse.cpp b/GeneralsMD/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Mouse.cpp
-index 9e5e8d9..35e1d5d 100644
+index 9e5e8d9..a8e9cc7 100644
 --- a/GeneralsMD/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Mouse.cpp
 +++ b/GeneralsMD/Code/GameEngineDevice/Source/SDL3Device/GameClient/SDL3Mouse.cpp
 @@ -27,11 +27,16 @@
@@ -402,7 +1462,7 @@ index 9e5e8d9..35e1d5d 100644
  	// Translate SDL_Event to MouseIO
  	// GeneralsX @refactor felipebraz 16/02/2026 Use unified translateEvent()
  	translateEvent(m_nextGetIndex, result);
-+#ifdef __EMSCRIPTEN__
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
 +	gxWebMouseEvent(m_eventBuffer[m_nextGetIndex], 1);
 +#endif
  
@@ -412,20 +1472,20 @@ index 9e5e8d9..35e1d5d 100644
  		return;  // Not a mouse event, ignore
  	}
  
-+	#ifdef __EMSCRIPTEN__
++	#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
 +	gxWebMouseEvent(*event, 0);
 +	#endif
  	// Check if buffer is full
  	UnsignedInt nextFreeIndex = (m_nextFreeIndex + 1) % MAX_SDL3_MOUSE_EVENTS;
  	if (nextFreeIndex == m_nextGetIndex) {
-+#ifdef __EMSCRIPTEN__
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
 +		gxWebMouseEvent(*event, 2);
 +#endif
  		// GeneralsX @bugfix BenderAI 18/02/2026 Temporarily disable debug logging (Phase 1.8)
  		// fprintf(stderr, "WARNING: SDL3Mouse::addSDLEvent() buffer full (dropped event)\n");
  		return;
 diff --git a/GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp b/GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp
-index 30a3ba2..4a769cd 100644
+index 30a3ba2..0b9bd58 100644
 --- a/GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp
 +++ b/GeneralsMD/Code/GameEngineDevice/Source/SDL3GameEngine.cpp
 @@ -28,6 +28,8 @@
@@ -441,22 +1501,156 @@ index 30a3ba2..4a769cd 100644
  	}
  #endif
  	GameEngine::update();
-+#ifdef __EMSCRIPTEN__
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
 +	gxWebInputSample(m_IsActive);
 +#endif
  }
  
  /**
-@@ -592,6 +597,9 @@ void SDL3GameEngine::pollSDL3Events(void)
+@@ -584,7 +589,13 @@ void SDL3GameEngine::setIsActive(Bool isActive)
+  */
+ void SDL3GameEngine::pollSDL3Events(void)
+ {
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++	if (gxWebInputCounters().enabled) ++gxWebInputCounters().pollCalls;
++#endif
+ 	if (!m_SDLWindow) {
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++		if (gxWebInputCounters().enabled) ++gxWebInputCounters().missingWindow;
++#endif
+ 		return;
+ 	}
+ 
+@@ -592,6 +603,9 @@ void SDL3GameEngine::pollSDL3Events(void)
  
  	SDL_Event event;
  	while (SDL_PollEvent(&event)) {
-+#ifdef __EMSCRIPTEN__
-+		++gxWebInputCounters().polled;
++#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
++		if (gxWebInputCounters().enabled) ++gxWebInputCounters().polled;
 +#endif
  		switch (event.type) {
  			case SDL_EVENT_QUIT:
  				m_quitting = true;
+diff --git a/GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/GUI/W3DGameFont.cpp b/GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/GUI/W3DGameFont.cpp
+index 959800e..6915124 100644
+--- a/GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/GUI/W3DGameFont.cpp
++++ b/GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/GUI/W3DGameFont.cpp
+@@ -44,6 +44,7 @@
+ ///////////////////////////////////////////////////////////////////////////////
+ 
+ // SYSTEM INCLUDES ////////////////////////////////////////////////////////////
++// GeneralsX @performance Codex 16/10/2026 Remove verbose trace producers before worker transport.
+ #include <stdlib.h>
+ #include <stdio.h>
+ #include <string.h>
+@@ -59,24 +60,15 @@
+ namespace
+ {
+ // GeneralsX @bugfix GitHubCopilot 20/05/2026 Resolve a usable Unicode fallback font on macOS/Linux when localized font names are unavailable.
+-// GeneralsX @tweak GitHubCopilot 27/05/2026 Add explicit stderr tracing for Unicode fallback font lookup decisions.
+ // GeneralsX @bugfix GitHubCopilot 29/05/2026 Prevent circular Unicode fallback when the localized unicode family equals the base font family.
+ FontCharsClass *LoadUnicodeFallbackFont(Int size, Bool bold, const char *base_name)
+ {
+ 	const char *preferred_name = nullptr;
+-	char log_buffer[512];
+ 
+ 	if (TheGlobalLanguageData && TheGlobalLanguageData->m_unicodeFontName.isNotEmpty()) {
+ 		preferred_name = TheGlobalLanguageData->m_unicodeFontName.str();
+ 	}
+ 
+-	sprintf(log_buffer,
+-		"[GX-ISSUE144] W3DFont fallback start size=%d bold=%d preferred=%s base=%s",
+-		size,
+-		bold,
+-		preferred_name ? preferred_name : "<none>",
+-		base_name ? base_name : "<none>");
+-	fprintf(stderr, "%s\n", log_buffer);
+ 
+ 	// Build candidate list: the localized preferred name first (may be a limited-coverage font like "Arial"),
+ 	// then known-good Unicode fonts. We iterate all candidates and pick the first that loads AND has a
+@@ -102,37 +94,20 @@ FontCharsClass *LoadUnicodeFallbackFont(Int size, Bool bold, const char *base_na
+ 
+ 		FontCharsClass *font = WW3DAssetManager::Get_Instance()->Get_FontChars(font_name, size, bold);
+ 		if (font != nullptr) {
+-			sprintf(log_buffer, "[GX-ISSUE144] W3DFont fallback hit list=%s", font_name);
+-			fprintf(stderr, "%s\n", log_buffer);
+ 			return font;
+ 		}
+ 
+-		sprintf(log_buffer, "[GX-ISSUE144] W3DFont fallback miss list=%s", font_name);
+-		fprintf(stderr, "%s\n", log_buffer);
+ 	}
+ 
+ 	// Now try the localized preferred name as a last resort (it may load on some platforms)
+ 	if (preferred_name != nullptr && (base_name == nullptr || strcmp(preferred_name, base_name) != 0)) {
+ 		FontCharsClass *font = WW3DAssetManager::Get_Instance()->Get_FontChars(preferred_name, size, bold);
+ 		if (font != nullptr) {
+-			sprintf(log_buffer, "[GX-ISSUE144] W3DFont fallback hit preferred=%s", preferred_name);
+-			fprintf(stderr, "%s\n", log_buffer);
+ 			return font;
+ 		}
+ 
+-		sprintf(log_buffer, "[GX-ISSUE144] W3DFont fallback miss preferred=%s", preferred_name);
+-		fprintf(stderr, "%s\n", log_buffer);
+-	}
+-	else if (preferred_name != nullptr) {
+-		sprintf(log_buffer, "[GX-ISSUE144] W3DFont fallback skip preferred=%s reason=same-as-base", preferred_name);
+-		fprintf(stderr, "%s\n", log_buffer);
+ 	}
+ 
+-	sprintf(log_buffer,
+-		"[GX-ISSUE144] W3DFont fallback exhausted size=%d bold=%d",
+-		size,
+-		bold);
+-	fprintf(stderr, "%s\n", log_buffer);
+ 
+ 	return nullptr;
+ }
+@@ -157,7 +132,6 @@ FontCharsClass *LoadUnicodeFallbackFont(Int size, Bool bold, const char *base_na
+ //=============================================================================
+ Bool W3DFontLibrary::loadFontData( GameFont *font )
+ {
+-	char log_buffer[512];
+ 
+ 	// sanity
+ 	if( font == nullptr )
+@@ -166,22 +140,18 @@ Bool W3DFontLibrary::loadFontData( GameFont *font )
+ 	const char* name = font->nameString.str();
+ 	const Int size = font->pointSize;
+ 	const Bool bold = font->bold;
+-	sprintf(log_buffer, "[GX-ISSUE144] W3DFont load request name=%s size=%d bold=%d", name ? name : "<null>", size, bold);
+-	fprintf(stderr, "%s\n", log_buffer);
+ 
+ 	// get the font data from the asset manager
+ 	FontCharsClass *fontChar = WW3DAssetManager::Get_Instance()->Get_FontChars( name, size, bold );
+ 
+ 	if( fontChar == nullptr )
+ 	{
+-		sprintf(log_buffer, "[GX-ISSUE144] W3DFont load miss name=%s size=%d bold=%d", name ? name : "<null>", size, bold);
+-		fprintf(stderr, "%s\n", log_buffer);
++		// GeneralsX @bugfix Codex 16/10/2026 Keep actual load failures visible in release builds.
++		fprintf(stderr, "ERROR: Unable to find font '%s' in Asset Manager\n", name ? name : "<null>");
+ 		DEBUG_CRASH(( "Unable to find font '%s' in Asset Manager", name ));
+ 		return FALSE;
+ 	}
+ 
+-	sprintf(log_buffer, "[GX-ISSUE144] W3DFont load hit name=%s size=%d bold=%d", name ? name : "<null>", size, bold);
+-	fprintf(stderr, "%s\n", log_buffer);
+ 
+ 	// assign font data
+ 	font->fontData = fontChar;
+@@ -211,11 +181,6 @@ Bool W3DFontLibrary::loadFontData( GameFont *font )
+ 			fontChar->AlternateUnicodeFont = LoadUnicodeFallbackFont(size, bold, name);
+ 		}
+ 	}
+-	sprintf(log_buffer,
+-		"[GX-ISSUE144] W3DFont alternate unicode %s for base=%s",
+-		fontChar->AlternateUnicodeFont ? "assigned" : "missing",
+-		name ? name : "<null>");
+-	fprintf(stderr, "%s\n", log_buffer);
+ 
+ 	return TRUE;
+ }
 diff --git a/GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/W3DDisplay.cpp b/GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/W3DDisplay.cpp
 index edcd0bc..c234cce 100644
 --- a/GeneralsMD/Code/GameEngineDevice/Source/W3DDevice/GameClient/W3DDisplay.cpp
@@ -473,6 +1667,127 @@ index edcd0bc..c234cce 100644
  	extern SDL_Window* TheSDL3Window;
  	if (!TheSDL3Window) return;
  
+diff --git a/Patches/sdl3-input-diagnostics.patch b/Patches/sdl3-input-diagnostics.patch
+new file mode 100644
+index 0000000..386027e
+--- /dev/null
++++ b/Patches/sdl3-input-diagnostics.patch
+@@ -0,0 +1,100 @@
++--- a/src/events/SDL_events.c
+++++ b/src/events/SDL_events.c
++@@ -159,6 +159,33 @@
++     SDL_EventEntry *tail;
++     SDL_EventEntry *free;
++ } SDL_EventQ = { NULL, false, { 0 }, 0, NULL, NULL, NULL };
+++
+++// GeneralsX temporary telemetry: atomics span browser callbacks and game polling.
+++// Compiles out completely unless the explicit investigation build enables it.
+++#ifdef GX_WEB_INPUT_DIAGNOSTICS
+++static SDL_AtomicInt gx_diag_enabled;
+++static SDL_AtomicInt gx_diag_counts[8];
+++#define GX_DIAG_INC(index) do { if (SDL_GetAtomicInt(&gx_diag_enabled)) SDL_AddAtomicInt(&gx_diag_counts[index], 1); } while (0)
+++void SDL_GXSetInputDiagnosticsEnabled(bool enabled)
+++{
+++    SDL_SetAtomicInt(&gx_diag_enabled, enabled);
+++}
+++void SDL_GXGetInputDiagnostics(Uint32 *out)
+++{
+++    int i;
+++    for (i = 0; i < 8; ++i) out[i] = (Uint32)SDL_GetAtomicInt(&gx_diag_counts[i]);
+++    out[8] = (Uint32)SDL_GetAtomicInt(&SDL_sentinel_pending);
+++    SDL_LockMutex(SDL_EventQ.lock);
+++    out[9] = SDL_EventQ.active;
+++    out[10] = (Uint32)SDL_GetAtomicInt(&SDL_EventQ.count);
+++    out[11] = SDL_EventQ.head != NULL;
+++    out[12] = SDL_EventQ.tail != NULL;
+++    SDL_UnlockMutex(SDL_EventQ.lock);
+++}
+++#else
+++#define GX_DIAG_INC(index) ((void)0)
+++#endif
+++
++ 
++ 
++ static void SDL_CleanupTemporaryMemory(void *data)
++@@ -1047,6 +1074,7 @@
++     int final_count;
++ 
++     if (initial_count >= SDL_MAX_QUEUED_EVENTS) {
+++        GX_DIAG_INC(4);
++         SDL_SetError("Event queue is full (%d events)", initial_count);
++         return 0;
++     }
++@@ -1054,6 +1082,7 @@
++     if (SDL_EventQ.free == NULL) {
++         entry = (SDL_EventEntry *)SDL_malloc(sizeof(*entry));
++         if (entry == NULL) {
+++            GX_DIAG_INC(5);
++             return 0;
++         }
++     } else {
++@@ -1157,6 +1186,7 @@
++     {
++         // Don't look after we've quit
++         if (!SDL_EventQ.active) {
+++            GX_DIAG_INC(6);
++             // We get a few spurious events at shutdown, so don't warn then
++             if (action == SDL_GETEVENT) {
++                 SDL_SetError("The event system has been shut down");
++@@ -1270,6 +1300,7 @@
++     {
++         // Don't look after we've quit
++         if (!SDL_EventQ.active) {
+++            GX_DIAG_INC(6);
++             SDL_UnlockMutex(SDL_EventQ.lock);
++             return;
++         }
++@@ -1549,6 +1580,7 @@
++ 
++ bool SDL_PollEvent(SDL_Event *event)
++ {
+++    GX_DIAG_INC(7);
++     return SDL_WaitEventTimeoutNS(event, 0);
++ }
++ 
++@@ -1801,19 +1833,23 @@
++ 
++ bool SDL_PushEvent(SDL_Event *event)
++ {
+++    GX_DIAG_INC(0);
++     if (!event->common.timestamp) {
++         event->common.timestamp = SDL_GetTicksNS();
++     }
++ 
++     if (!SDL_CallEventWatchers(event)) {
+++        GX_DIAG_INC(1);
++         SDL_ClearError();
++         return false;
++     }
++ 
++     if (SDL_PeepEvents(event, 1, SDL_ADDEVENT, 0, 0) <= 0) {
+++        GX_DIAG_INC(3);
++         return false;
++     }
++ 
+++    GX_DIAG_INC(2);
++     return true;
++ }
++ 
+diff --git a/cmake/emscripten.cmake b/cmake/emscripten.cmake
+index 3983cb7..8869fe2 100644
+--- a/cmake/emscripten.cmake
++++ b/cmake/emscripten.cmake
+@@ -21,6 +21,10 @@ endif()
+ 
+ message(STATUS "Configuring Emscripten (WebAssembly) build")
+ 
++# GeneralsX @build Codex 16/10/2026 Temporary investigation probes are opt-in.
++option(GX_WEB_INPUT_DIAGNOSTICS "Compile temporary browser input diagnostics" OFF)
++
++
+ # The codebase treats every non-Windows platform as "_UNIX" (core_config adds
+ # it for engine targets); the FetchContent'd GameSpy SDK needs it too, and its
+ # targets don't link core_config - so define it globally. Emscripten's musl
 diff --git a/cmake/ffmpeg-emscripten.cmake b/cmake/ffmpeg-emscripten.cmake
 index ebafc6e..2e5a7de 100644
 --- a/cmake/ffmpeg-emscripten.cmake
@@ -488,698 +1803,109 @@ index ebafc6e..2e5a7de 100644
  set(FFMPEG_EM_INSTALL "${FFMPEG_EM_PREFIX}/install")
  
  # emconfigure/emmake live next to emcc (EMSCRIPTEN_ROOT_PATH comes from the
-diff --git a/resources/gitinfo/git_watcher.cmake b/resources/gitinfo/git_watcher.cmake
-index 40ae042..4ce5f09 100644
---- a/resources/gitinfo/git_watcher.cmake
-+++ b/resources/gitinfo/git_watcher.cmake
-@@ -308,6 +308,8 @@ endfunction()
- function(SetupGitMonitoring)
-     add_custom_target(check_git
-         ALL
-+        # GeneralsX @build Codex 08/10/2026 Quote paths containing shell metacharacters.
-+        VERBATIM
-         DEPENDS ${GIT_PRE_CONFIGURE_FILE}
-         BYPRODUCTS
-             ${GIT_POST_CONFIGURE_FILE}
-diff --git a/scripts/web/make-dist.sh b/scripts/web/make-dist.sh
-index b60ed7b..12cc5c8 100755
---- a/scripts/web/make-dist.sh
-+++ b/scripts/web/make-dist.sh
-@@ -45,7 +45,11 @@ mkdir -p "$DIST"
- 
- # ── Shell ─────────────────────────────────────────────────────────────────────
- echo "==> Shell"
--cp "$REPO_ROOT"/web/shell/*.js "$REPO_ROOT"/web/shell/index.html "$DIST/"
-+cp "$REPO_ROOT"/web/shell/*.js "$REPO_ROOT"/web/shell/index.html "$REPO_ROOT"/web/shell/saves.html "$DIST/"
-+# GeneralsX @feature Codex 08/10/2026 Include the launcher theme and bucket configuration.
-+cp "$REPO_ROOT"/web/shell/launcher.css "$REPO_ROOT"/web/shell/launcher-config.json "$DIST/"
-+mkdir -p "$DIST/art"
-+cp -R "$REPO_ROOT/web/shell/art/." "$DIST/art/"
- mkdir -p "$DIST/i18n"
- cp -R "$REPO_ROOT/web/shell/i18n/." "$DIST/i18n/"
- cp "$REPO_ROOT"/web/shell/brotli_bg.wasm "$DIST/"   # brotli-wasm decoder blob
-diff --git a/scripts/web/packer.py b/scripts/web/packer.py
-index fc58f80..fe2f54a 100644
---- a/scripts/web/packer.py
-+++ b/scripts/web/packer.py
-@@ -34,7 +34,8 @@ import os, sys, json, struct, time, hashlib
- from concurrent.futures import ProcessPoolExecutor
- import brotli
- 
--BROTLI_QUALITY = 11
-+# GeneralsX @build Codex 08/10/2026 Allow fast local packing without changing the format.
-+BROTLI_QUALITY = int(os.environ.get('GX_BROTLI_QUALITY', '11'))
- BROTLI_LGWIN = 24
- MAGIC = 0x47415844
- VERSION = 2
-diff --git a/web/shell/coi-serviceworker.js b/web/shell/coi-serviceworker.js
-index ab55a83..13dfdc3 100644
---- a/web/shell/coi-serviceworker.js
-+++ b/web/shell/coi-serviceworker.js
-@@ -66,7 +66,11 @@ if (typeof window === 'undefined') {
- } else {
-   // ---- Window context: register + one-time reload ----
-   (() => {
--    if (window.crossOriginIsolated) return; // host already sends the headers
-+    const reloadKey = 'gx-coi-reload:' + window.location.pathname;
-+    if (window.crossOriginIsolated) {
-+      sessionStorage.removeItem(reloadKey);
-+      return;
-+    }
- 
-     if (!window.isSecureContext) {
-       console.warn('[coi-sw] not a secure context - service worker cannot help; use HTTPS');
-@@ -94,10 +98,13 @@ if (typeof window === 'undefined') {
-         return navigator.serviceWorker.ready;
-       })
-       .then(() => {
--        if (!navigator.serviceWorker.controller) {
--          console.log('[coi-sw] active but not controlling - reloading to pick up COOP/COEP...');
-+        // GeneralsX @bugfix Codex 08/10/2026 clients.claim() can already set
-+        // controller, but only a new document response enables isolation.
-+        if (!window.crossOriginIsolated && !sessionStorage.getItem(reloadKey)) {
-+          sessionStorage.setItem(reloadKey, '1');
-+          console.log('[coi-sw] reloading document to pick up COOP/COEP...');
-           window.location.reload();
--        }
-+        } else window.gxCoiPending = false;
-       })
-       .catch((e) => {
-         console.error('[coi-sw] registration failed:', e);
-diff --git a/web/shell/game.js b/web/shell/game.js
-index 81ddf1b..f8615f2 100644
---- a/web/shell/game.js
-+++ b/web/shell/game.js
-@@ -44,19 +44,25 @@ async function gxPreloadEngine(onProgress) {
-   window.gxEngine.wasmBinary = bin;
- }
- 
-+// GeneralsX @performance Codex 15/10/2026 Default to 120 render FPS; WebMain
-+// preserves the engine's game-speed limit as the independent logic rate.
-+function gxRenderFpsLimit() {
-+  const selected = localStorage.getItem('gx-render-fps');
-+  const legacy = localStorage.getItem('gx-fps');
-+  // Upgrade the old 30 FPS default, but allow an explicit 30 FPS preference
-+  // under the new render-only key. Preserve other supported lower settings.
-+  const stored = Number(selected ?? (legacy === '30' ? null : legacy));
-+  return [30, 60, 90, 120].includes(stored) ? stored : 120;
-+}
+diff --git a/cmake/sdl3.cmake b/cmake/sdl3.cmake
+index 33bd5b8..95d91d4 100644
+--- a/cmake/sdl3.cmake
++++ b/cmake/sdl3.cmake
+@@ -33,6 +33,10 @@ if(SAGE_USE_SDL3)
+     # GeneralsX @build web-port 05/07/2026 Emscripten links everything statically
+     # into the wasm module; SDL3's official Emscripten backend requires static.
+     if(EMSCRIPTEN)
++        # GeneralsX @bugfix Codex 16/10/2026 Main-thread callbacks and game-worker
++        # polling share SDL queues; Emscripten SDL defaults to no-op locks unless
++        # pthread support is explicitly enabled, even when the compiler uses -pthread.
++        set(SDL_PTHREADS ON CACHE BOOL "Protect SDL state shared by browser and game worker" FORCE)
+         set(SDL_SHARED OFF CACHE BOOL "No shared libs on Emscripten" FORCE)
+         set(SDL_STATIC ON CACHE BOOL "Build SDL3 static for wasm" FORCE)
+     else()
+@@ -53,6 +57,19 @@ if(SAGE_USE_SDL3)
+     set(SDL_QSPI OFF CACHE BOOL "Disable QSPI (unused)" FORCE)
+     
+     FetchContent_MakeAvailable(SDL3)
++    if(EMSCRIPTEN AND NOT HAVE_PTHREADS)
++        message(FATAL_ERROR "The browser game requires SDL pthread synchronization")
++    endif()
 +
- function gxGameArguments() {
-   // Pass engine flags via URL: ?args=-headless+-noshellmap etc.
-   const p = new URLSearchParams(location.search);
-   const raw = p.get('args');
-   const args = raw ? raw.split(' ').filter(Boolean) : [];
--  // Loader settings (index.html #gx-settings): FPS limit -> engine -fps.
--  // An explicit -fps in ?args= wins.
--  if (!args.includes('-fps')) {
--    const fps = parseInt(localStorage.getItem('gx-fps') || '30', 10);
--    if (fps > 0 && fps !== 30) {
--      args.push('-fps', String(fps));
--    }
--  }
-+  // Do not turn the render preference into -fps: that flag changes the
-+  // initial engine/game-speed limit before WebMain can decouple the rates.
-+  // Explicit diagnostic URL arguments remain available.
-   return args;
- }
- 
-@@ -103,6 +109,7 @@ function gxInstallKeyGuard() {
- }
- 
- async function gxStartGame() {
-+  window.gxDiagnostics?.start();
-   // Engine wasm was pre-downloaded by gxPreloadEngine() into window.gxEngine.
-   const buildId = window.gxEngine.buildId || 'dev';
-   const wasmBinary = window.gxEngine.wasmBinary;
-@@ -125,14 +132,17 @@ async function gxStartGame() {
-       // population from window.gxFiles). Read by WebMain.cpp.
-       gxStorageMode: window.gxStorageKind === 'idb' ? 1 : 0,
-       // Loader settings: render FPS limit (see index.html #gx-settings).
--      gxFps: parseInt(localStorage.getItem('gx-fps') || '30', 10),
-+      gxFps: gxRenderFpsLimit(),
-       // Selected build name (stored by loader, consumed by WebMain if needed).
-       gxBuildName: localStorage.getItem('gx-build') || 'default_ru',
-       print: (t) => console.log('[game]', t),
-       printErr: (t) => {
-         // Drop known per-frame spam (same filter the iOS port uses in its
-         // log sink) - keeps the console usable during real sessions.
--        if (t.startsWith('[GX-ISSUE144]') || t.startsWith('[INI] ')) return;
-+        if (t.startsWith('[GX-ISSUE144]') || t.startsWith('[INI] ')) {
-+          window.gxDiagnostics?.log('engine.filtered', t);
-+          return;
-+        }
-         console.warn('[game]', t);
-       },
-       onRuntimeInitialized: () => {
-diff --git a/web/shell/i18n/en.js b/web/shell/i18n/en.js
-index a476826..203d900 100644
---- a/web/shell/i18n/en.js
-+++ b/web/shell/i18n/en.js
-@@ -17,7 +17,7 @@ window.gxLocales.en = {
-   'shell.wipe': 'Clear all data',
-   'shell.wipeNote': 'Deletes downloaded resources, saves, and settings (OPFS, IndexedDB, caches). All resources will need to be downloaded again.',
-   'shell.author': 'Author: Lolendor',
--  'loader.ready': 'Select a build and press Play',
-+  'loader.ready': 'Install your game files once. Then press Play.',
-   'loader.engine': 'Downloading engine…',
-   'loader.assets': 'Downloading and unpacking resources…',
-   'loader.files': 'Preparing files…',
-diff --git a/web/shell/i18n/i18n.js b/web/shell/i18n/i18n.js
-index 86d06d4..c7e4037 100644
---- a/web/shell/i18n/i18n.js
-+++ b/web/shell/i18n/i18n.js
-@@ -1,82 +1,14 @@
--// GeneralsX Web - launch-screen localization.
--//
--// Uses the first supported browser language unless the player has explicitly
--// selected one. This changes the web shell only; it never changes the game
--// build or its language.
--//
--// GeneralsX @feature Lolendor 22/07/2026 Add Russian/English shell localization.
--
-+// GeneralsX @tweak Codex 08/10/2026 This deployment has one Russian interface.
- 'use strict';
--
--(() => {
--  const STORAGE_KEY = 'gx-language';
--  const SUPPORTED = ['ru', 'en'];
--
--  function storedLanguage() {
--    try {
--      const value = localStorage.getItem(STORAGE_KEY);
--      return SUPPORTED.includes(value) ? value : null;
--    } catch {
--      return null;
--    }
--  }
--
--  function browserLanguage() {
--    const preferred = navigator.languages && navigator.languages.length
--      ? navigator.languages
--      : [navigator.language || 'en'];
--    for (const locale of preferred) {
--      const language = String(locale).toLowerCase().split('-')[0];
--      if (SUPPORTED.includes(language)) return language;
--    }
--    return 'en';
--  }
--
--  function interpolate(text, values) {
--    return String(text).replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) =>
--      Object.prototype.hasOwnProperty.call(values || {}, key) ? values[key] : match);
--  }
--
--  const api = {
--    language: storedLanguage() || browserLanguage(),
--
--    t(key, values) {
--      const current = window.gxLocales[this.language] || {};
--      const fallback = window.gxLocales.en || {};
--      return interpolate(current[key] ?? fallback[key] ?? key, values);
--    },
--
--    apply(root = document) {
--      document.documentElement.lang = this.language === 'en' ? 'en-US' : 'ru-RU';
--      root.querySelectorAll('[data-i18n]').forEach((element) => {
--        element.textContent = this.t(element.dataset.i18n);
--      });
--
--      const switcher = document.getElementById('gx-language-switch');
--      if (switcher) {
--        const flag = document.getElementById('gx-language-flag');
--        if (flag) flag.setAttribute('src', this.language === 'ru' ? 'i18n/flags/us.svg' : 'i18n/flags/ru.svg');
--        switcher.title = this.t('language.switch');
--        switcher.setAttribute('aria-label', this.t('language.switch'));
--      }
--    },
--
--    setLanguage(language) {
--      if (!SUPPORTED.includes(language) || language === this.language) return;
--      this.language = language;
--      try { localStorage.setItem(STORAGE_KEY, language); } catch {}
--      this.apply();
--      window.dispatchEvent(new CustomEvent('gxlanguagechange', { detail: { language } }));
--    },
--
--    toggle() {
--      this.setLanguage(this.language === 'ru' ? 'en' : 'ru');
--    },
--  };
--
--  window.gxI18n = api;
--  api.apply();
--
--  const switcher = document.getElementById('gx-language-switch');
--  if (switcher) switcher.addEventListener('click', () => api.toggle());
--})();
-+window.gxI18n = {
-+  language: 'ru',
-+  t(key, values) {
-+    return String(window.gxLocales.ru[key] ?? key).replace(/\{([a-zA-Z0-9_]+)\}/g,
-+      (match, name) => Object.prototype.hasOwnProperty.call(values || {}, name) ? values[name] : match);
-+  },
-+  apply(root = document) {
-+    document.documentElement.lang = 'ru';
-+    root.querySelectorAll('[data-i18n]').forEach(element => { element.textContent = this.t(element.dataset.i18n); });
-+  },
-+};
-+window.gxI18n.apply();
-diff --git a/web/shell/i18n/ru.js b/web/shell/i18n/ru.js
-index 33d13a1..981e7f3 100644
---- a/web/shell/i18n/ru.js
-+++ b/web/shell/i18n/ru.js
-@@ -17,7 +17,7 @@ window.gxLocales.ru = {
-   'shell.wipe': 'Очистить все данные',
-   'shell.wipeNote': 'Удаляет скачанные ресурсы, сейвы и настройки (OPFS, IndexedDB, кэши). Понадобится полная перезагрузка ресурсов.',
-   'shell.author': 'Автор: Lolendor',
--  'loader.ready': 'Настройте сборку и нажмите Играть',
-+  'loader.ready': 'Файлы и сохранения останутся на этом устройстве.',
-   'loader.engine': 'Загрузка движка…',
-   'loader.assets': 'Загрузка и распаковка ресурсов…',
-   'loader.files': 'Подготовка файлов…',
-diff --git a/web/shell/index.html b/web/shell/index.html
-index 8121ab6..6498fd5 100644
---- a/web/shell/index.html
-+++ b/web/shell/index.html
-@@ -11,109 +11,15 @@
-     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-   }
-   #canvas {
--    display: block; width: 100vw; height: 100vh;
-+    display: block; position: fixed; inset: 0; width: 100vw !important; height: 100vh !important;
-     background: #000; outline: none;
-   }
--  #gx-overlay {
--    position: fixed; inset: 0; z-index: 10;
--    display: flex; flex-direction: column; align-items: center; justify-content: center;
--    background: radial-gradient(ellipse at center, #16202b 0%, #0b0e11 100%);
--    text-align: center; padding: 24px;
--  }
--  /* GeneralsX @feature Lolendor 22/07/2026 Add a flag language switch to the launch screen. */
--  #gx-language-switch {
--    position: absolute; top: 16px; right: 18px;
--    width: 46px; height: 34px; padding: 5px; cursor: pointer;
--    color: inherit; background: rgba(29, 39, 51, .7);
--    border: 1px solid #2c3a4a; border-radius: 6px;
--    line-height: 1; opacity: .8;
--  }
--  #gx-language-switch img {
--    display: block; width: 34px; height: 22px; object-fit: cover;
--    border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .22);
--  }
--  #gx-language-switch:hover { background: #253242; opacity: 1; }
--  #gx-language-switch:focus-visible { outline: 2px solid #e8b64c; outline-offset: 3px; }
--  #gx-title { font-size: 28px; letter-spacing: 2px; margin-bottom: 8px; color: #e8b64c; }
--  #gx-sub { font-size: 13px; opacity: .6; margin-bottom: 40px; }
--  #gx-progress-wrap { width: min(520px, 80vw); }
--  .gx-prog { margin-bottom: 14px; }
--  .gx-prog:last-child { margin-bottom: 0; }
--  .gx-prog-head {
--    display: flex; justify-content: space-between; align-items: baseline;
--    font-size: 12px; margin-bottom: 5px; opacity: .8;
--  }
--  .gx-prog-head .gx-lbl { letter-spacing: .5px; }
--  .gx-prog-head .gx-val { font-variant-numeric: tabular-nums; opacity: .7; }
--  #gx-track, #gx-track2 {
--    width: 100%; height: 12px; border-radius: 6px;
--    background: #1d2733; overflow: hidden; border: 1px solid #2c3a4a;
--  }
--  #gx-bar, #gx-bar2 {
--    width: 0%; height: 100%;
--    background: linear-gradient(90deg, #b9821f, #e8b64c);
--    transition: width .15s linear;
--  }
--  #gx-bar2 { background: linear-gradient(90deg, #2f7d5b, #4fce8f); }
--  #gx-pct { margin-top: 10px; font-size: 15px; }
--  #gx-detail { margin-top: 6px; font-size: 12px; opacity: .65; min-height: 16px; }
--  #gx-storage-kind { font-size: 11px; opacity: .4; margin-top: 18px; }
--  #gx-play {
--    display: none; margin-top: 28px; padding: 14px 58px;
--    font-size: 20px; letter-spacing: 3px; cursor: pointer;
--    color: #0b0e11; background: linear-gradient(180deg, #e8b64c, #b9821f);
--    border: none; border-radius: 6px; text-transform: uppercase; font-weight: 700;
--  }
--  #gx-play:hover { filter: brightness(1.1); }
--  #gx-settings-btn {
--    display: none; margin-top: 12px; padding: 8px 22px;
--    font-size: 13px; letter-spacing: 1px; cursor: pointer;
--    color: #d8dee6; background: #1d2733; border: 1px solid #2c3a4a;
--    border-radius: 6px;
--  }
--  #gx-settings-btn:hover { background: #253242; }
--  #gx-settings {
--    margin-top: 14px; padding: 14px 20px; font-size: 14px;
--    background: #131b24; border: 1px solid #2c3a4a; border-radius: 6px;
--    text-align: left;
--  }
--  #gx-settings select {
--    margin-left: 8px; padding: 4px 8px; font-size: 14px;
--    color: #d8dee6; background: #1d2733; border: 1px solid #2c3a4a; border-radius: 4px;
--  }
--  #gx-settings-note { margin-top: 8px; font-size: 11px; opacity: .5; }
--  #gx-wipe {
--    display: block; width: 100%; margin-top: 12px; padding: 8px;
--    font-size: 12px; cursor: pointer; border-radius: 5px;
--    color: #f0b0b0; background: #2a1616; border: 1px solid #7c3a3a;
--  }
--  #gx-wipe:hover { background: #3a1d1d; }
--  #gx-wipe-note { margin-top: 6px; font-size: 10px; opacity: .45; line-height: 1.4; }
--  #gx-error {
--    display: none; margin-top: 24px; max-width: min(640px, 85vw);
--    padding: 14px 18px; border: 1px solid #7c3a3a; border-radius: 6px;
--    background: #2a1616; color: #f0b0b0; font-size: 13px; line-height: 1.5;
--    white-space: pre-wrap; text-align: left;
--  }
--  /* GeneralsX @feature Lolendor 22/07/2026 Credit the WebAssembly project on the launch screen. */
--  .footer-credit {
--    position: absolute; bottom: 18px; left: 24px; right: 24px;
--    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px;
--    font-size: 12px; color: rgba(216, 222, 230, .55);
--  }
--  .footer-credit .gh-link {
--    display: inline-flex; align-items: center; gap: 6px;
--    color: #d8dee6; text-decoration: none; opacity: .75;
--  }
--  .footer-credit .gh-link:hover { color: #e8b64c; opacity: 1; }
--  .footer-credit .gh-link:focus-visible { outline: 2px solid #e8b64c; outline-offset: 3px; }
--  .footer-author, .footer-license { white-space: nowrap; }
--  .footer-author::before, .footer-license::before { content: "\00b7"; margin-right: 12px; }
--  @media (max-width: 480px) {
--    .footer-credit { bottom: 12px; font-size: 11px; gap: 5px 10px; }
--    .footer-author::before { content: none; margin-right: 0; }
--  }
--  /* Floating multiplayer panel (over the running game canvas) */
-+  #gx-fullscreen { position: fixed; right: 8px; top: 8px; z-index: 30; color: white;
-+    width: 44px; height: 44px; border: 1px solid #687583; border-radius: 4px; background: #101820cc; font-size: 24px; cursor: pointer; }
-+  #gx-fullscreen-status { position: fixed; right: 60px; top: 12px; z-index: 31;
-+    max-width: min(440px, 75vw); padding: 8px; background: #101820; color: #ffdc91; }
-+  #gx-game-cursor { position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none; user-select: none; }
-+  #gx-fullscreen-status:empty { display: none; }
-   #gx-mp {
-     position: fixed; top: 10px; right: 10px; z-index: 20;
-     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
-@@ -149,8 +55,11 @@
-   #gx-mp-status { font-size: 11px; opacity: .75; margin-top: 8px; min-height: 28px; line-height: 1.4; }
-   #gx-mp-peers { font-size: 11px; opacity: .6; margin-top: 4px; }
- </style>
-+<link rel="stylesheet" href="launcher.css">
- </head>
- <body>
-+<button id="gx-fullscreen" type="button" aria-label="На весь экран" title="На весь экран (Alt+Enter)">⤢</button>
-+<div id="gx-fullscreen-status" role="status" aria-live="polite"></div>
- <canvas id="canvas" tabindex="0" style="outline:none" oncontextmenu="event.preventDefault()"></canvas>
- 
- <div id="gx-mp" hidden>
-@@ -174,60 +83,50 @@
-   </div>
- </div>
- 
-+<!-- GeneralsX @feature Codex 08/10/2026 Single-screen Russian game menu using supplied retail artwork. -->
- <div id="gx-overlay">
--  <button id="gx-language-switch" type="button" aria-label="Switch language">
--    <img id="gx-language-flag" src="i18n/flags/us.svg" width="34" height="22" alt="" draggable="false">
--  </button>
--  <div id="gx-title">C&amp;C GENERALS: ZERO HOUR</div>
--  <div id="gx-sub" data-i18n="shell.subtitle">веб-версия &middot; wasm + WebGL2</div>
--  <div id="gx-progress-wrap">
--    <div class="gx-prog">
--      <div class="gx-prog-head"><span class="gx-lbl" data-i18n="shell.download">Загрузка</span><span class="gx-val" id="gx-dl-val">0%</span></div>
--      <div id="gx-track"><div id="gx-bar"></div></div>
--    </div>
--    <div class="gx-prog">
--      <div class="gx-prog-head"><span class="gx-lbl" data-i18n="shell.unpack">Распаковка</span><span class="gx-val" id="gx-un-val">0%</span></div>
--      <div id="gx-track2"><div id="gx-bar2"></div></div>
--    </div>
--  </div>
--  <div id="gx-detail" data-i18n="shell.initializing">Инициализация…</div>
--  <button id="gx-play" data-i18n="shell.play">Играть</button>
--  <button id="gx-settings-btn" type="button" data-i18n="shell.settings">Настройки</button>
-+  <div class="battlefield" aria-hidden="true"></div>
-+  <div class="menu-frame" aria-hidden="true"></div>
-+  <main class="command-main">
-+    <section class="deploy-panel" aria-label="Запуск игры">
-+      <h1 id="gx-title"><img class="game-logo" src="art/zero-hour-logo.png" alt="Command &amp; Conquer Generals Zero Hour" width="352" height="149"></h1>
-+      <div class="readiness"><span class="connection-light"></span><span id="gx-ready-label" data-ready="false" role="status">Проверка файлов…</span></div>
-+      <div id="gx-local-data">
-+        <a id="gx-download" class="menu-action" aria-disabled="true" target="_blank" rel="noopener">Скачать игру</a>
-+        <small id="gx-package-info">Пакет файлов · tar.gz</small>
-+        <button id="gx-select-archive" class="menu-action" type="button">Выбрать файл игры</button>
-+        <input id="gx-archive" type="file" accept=".tar.gz,.tgz,application/gzip" hidden>
-+        <div id="gx-local-status" role="status" aria-live="polite">Скачайте архив и выберите его здесь.<br>Повторная установка не потребуется.</div>
-+        <button id="gx-cancel-import" type="button" hidden>Отменить установку</button>
-+      </div>
-+      <div id="gx-progress-wrap">
-+        <div class="gx-prog"><div class="gx-prog-head"><span id="gx-dl-label" data-i18n="shell.download">Загрузка</span><span id="gx-dl-val">0%</span></div><div class="gx-track"><div id="gx-bar"></div></div></div>
-+        <div class="gx-prog"><div class="gx-prog-head"><span data-i18n="shell.unpack">Распаковка</span><span id="gx-un-val">0%</span></div><div class="gx-track"><div id="gx-bar2"></div></div></div>
-+      </div>
-+      <button id="gx-play" class="menu-action play-action" type="button" disabled>Играть</button>
-+      <div id="gx-detail" role="status" data-i18n="shell.initializing">Инициализация…</div>
-+      <div id="gx-error" role="alert"></div>
-+    </section>
-+  </main>
-+  <footer class="command-footer"><span>Полный экран — Alt + Enter · Отчёт об ошибке — Ctrl + Shift + F8</span><a href="source/">Исходный код · GPL-3.0</a></footer>
-+</div>
-+<!-- Compatibility controls stay outside the visible launcher. Saves remain available inside the game. -->
-+<div hidden>
-+  <button id="gx-select-folder" type="button">Выбрать папку</button><input id="gx-folder" type="file" webkitdirectory multiple>
-+  <span id="gx-storage-kind"></span><button id="gx-settings-btn" type="button">Настройки</button>
-   <div id="gx-settings" hidden>
--    <label><span data-i18n="shell.fpsLimit">Лимит FPS:</span>
--      <select id="gx-fps">
--        <option value="30" data-i18n="shell.original">30 (оригинал)</option>
--        <option value="60">60</option>
--        <option value="90">90</option>
--        <option value="120">120</option>
--        <option value="144">144</option>
--      </select>
--    </label>
--    <label><span data-i18n="shell.build">Сборка:</span>
--      <select id="gx-build">
--        <option value="default_ru">default_ru (Generals ZH)</option>
--      </select>
--    </label>
--    <div id="gx-settings-note" data-i18n="shell.settingsNote">Сохраняется в браузере; применяется при запуске игры.</div>
-+    <select id="gx-fps"><option value="30">30</option><option value="60">60</option><option value="90">90</option><option value="120" selected>120</option></select>
-+    <select id="gx-build"><option value="local">Локальные файлы</option></select>
-+    <button id="gx-export-saves" type="button">Скачать сохранения</button><button id="gx-import-saves" type="button">Восстановить сохранения</button>
-+    <input id="gx-save-file" type="file" accept=".json,application/json"><div id="gx-backup-status" role="status"></div>
-     <button id="gx-wipe" type="button" data-i18n="shell.wipe">Очистить все данные</button>
--    <div id="gx-wipe-note" data-i18n="shell.wipeNote">Удаляет скачанные ресурсы, сейвы и настройки (OPFS, IndexedDB, кэши). Понадобится полная перезагрузка ресурсов.</div>
-   </div>
--  <div id="gx-error"></div>
--  <div id="gx-storage-kind"></div>
--  <span class="footer-credit">
--    <a href="https://github.com/Lolendor/Generals-WebAssembly" target="_blank" rel="noopener noreferrer" class="gh-link">
--      <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
--      Lolendor/Generals-WebAssembly
--    </a>
--    <span class="footer-author" data-i18n="shell.author">Автор: Lolendor</span>
--    <span class="footer-license">GPL-3.0</span>
--  </span>
- </div>
- 
-+<script src="diagnostics.js?v=20261016-3"></script>
- <script src="coi-serviceworker.js"></script>
- <script src="brotli.min.js"></script>
- <script src="i18n/ru.js"></script>
--<script src="i18n/en.js"></script>
- <script src="i18n/i18n.js"></script>
- <script src="storage.js"></script>
- <script src="signaling.js"></script>
-@@ -235,7 +134,11 @@
- <script src="loadscreen.js"></script>
- <script src="lobby.js"></script>
- <script src="mp-ui.js"></script>
--<script src="game.js"></script>
-+<script src="game.js?v=20261016-3"></script>
-+<script src="save-backup.js"></script>
-+<script src="local-data.js"></script>
-+<script src="pointer-lock.js"></script>
-+<script src="fullscreen.js"></script>
- <script src="loader.js"></script>
- </body>
- </html>
-diff --git a/web/shell/loader.js b/web/shell/loader.js
-index 37e70ce..25090b2 100644
---- a/web/shell/loader.js
-+++ b/web/shell/loader.js
-@@ -28,7 +28,7 @@ const gxUI = {
-     console.error('[loader]', msg);
-     const el = document.getElementById('gx-error');
-     el.style.display = 'block';
--    el.textContent = msg;
-+    el.textContent = /[А-Яа-яЁё]/.test(msg) ? msg : 'Не удалось запустить игру. Обновите страницу и повторите попытку.';
-     document.getElementById('gx-progress-wrap').style.display = 'none';
-   },
-   download(done, total, detail) {
-@@ -291,15 +291,28 @@ async function gxBoot() {
-     const settingsBtn = document.getElementById('gx-settings-btn');
-     const settingsBox = document.getElementById('gx-settings');
-     const fpsSel = document.getElementById('gx-fps');
--    fpsSel.value = localStorage.getItem('gx-fps') || '30';
--    if (![...fpsSel.options].some(o => o.value === fpsSel.value)) fpsSel.value = '30';
--    fpsSel.addEventListener('change', () => localStorage.setItem('gx-fps', fpsSel.value));
-+    fpsSel.value = String(gxRenderFpsLimit());
-+    fpsSel.addEventListener('change', () => localStorage.setItem('gx-render-fps', fpsSel.value));
- 
-     const buildSel = document.getElementById('gx-build');
--    buildSel.value = localStorage.getItem('gx-build') || 'default_ru';
--    if (![...buildSel.options].some(o => o.value === buildSel.value)) buildSel.value = 'default_ru';
-+    // GeneralsX @bugfix Codex 08/10/2026 Use the packaged installations rather than a hardcoded build.
-+    const buildsResponse = await fetch('assets/builds.json', { cache: 'no-cache' });
-+    if (!buildsResponse.ok) throw new Error('Game data missing. Run npm run assets.');
-+    const builds = await buildsResponse.json();
-+    if (!Array.isArray(builds)) throw new Error('Invalid builds.json.');
-+    builds.unshift({name: 'local', label: 'Локальные файлы'});
-+    buildSel.replaceChildren(...builds.map((build) => {
-+      const name = typeof build === 'string' ? build : build.name;
-+      return new Option(typeof build === 'string' ? build : (build.label || name), name);
-+    }));
-+    const savedBuild = localStorage.getItem('gx-build');
-+    buildSel.value = [...buildSel.options].some(o => o.value === savedBuild)
-+      ? savedBuild : buildSel.options[0].value;
-+    localStorage.setItem('gx-build', buildSel.value);
-     buildSel.addEventListener('change', () => localStorage.setItem('gx-build', buildSel.value));
- 
-+    const installLocal = await gxSetupLocalData(storage, buildSel);
-+    await gxSetupSaveBackup(storage);
-     settingsBtn.style.display = 'inline-block';
-     settingsBtn.addEventListener('click', () => { settingsBox.hidden = !settingsBox.hidden; });
- 
-@@ -343,6 +356,10 @@ async function gxBoot() {
-     btn.style.display = 'none';
-     settingsBtn.style.display = 'none';
-     settingsBox.hidden = true;
-+    // GeneralsX @bugfix Codex 08/10/2026 Do not allow another import while starting.
-+    document.getElementById('gx-local-data').hidden = true;
-+    document.getElementById('gx-ready-label').textContent = 'Запуск игры…';
-+    document.getElementById('gx-dl-label').textContent = gxText('shell.download');
- 
-     const build = localStorage.getItem('gx-build') || 'default_ru';
-     const markerKey = 'installed-' + build;
-@@ -356,6 +373,9 @@ async function gxBoot() {
-     gxUI.status('loader.engine');
-     await gxPreloadEngine((received, total) => gxUI.download(received, total));
- 
-+    await installLocal();
-+    document.getElementById('gx-local-data').hidden = true;
-+
-     // Already installed? Skip the resource download/unpack and go straight to play.
-     const marker = await storage.readMeta(markerKey);
-     if (marker && marker.complete) {
-@@ -368,6 +388,7 @@ async function gxBoot() {
-       document.getElementById('gx-progress-wrap').style.display = 'none';
-       await gxStartGame();
-       gxUI.overlay.style.display = 'none';
-+      document.getElementById('gx-fullscreen').hidden = false;
-       return;
-     }
- 
-@@ -380,7 +401,9 @@ async function gxBoot() {
-     // NOTE: a STABLE url (no cache-buster) so Range resume across page reloads
-     // targets the same resource; freshness is validated by the server ETag in
-     // the resume journal.
--    const url = 'assets/' + encodeURIComponent(build) + '/build.data';
-+    const selectedBuild = builds.find(b => (typeof b === 'string' ? b : b.name) === build);
-+    const url = selectedBuild.url || ('assets/' + encodeURIComponent(build) + '/build.data');
-+    await storage.requestPersist();
-     const journalKey = 'unpack-journal-' + build;
-     gxUI.status('loader.assets');
-     const result = await gxStreamExtract(url, storage, journalKey);
-@@ -400,6 +423,7 @@ async function gxBoot() {
-     document.getElementById('gx-progress-wrap').style.display = 'none';
-     await gxStartGame();
-     gxUI.overlay.style.display = 'none';
-+      document.getElementById('gx-fullscreen').hidden = false;
-   } catch (e) {
-     gxUI.error(e && e.message ? e.message : String(e));
-   }
-diff --git a/Core/GameEngineDevice/Include/WebInputDiagnostics.h b/Core/GameEngineDevice/Include/WebInputDiagnostics.h
-new file mode 100644
-index 0000000..e937276
---- /dev/null
-+++ b/Core/GameEngineDevice/Include/WebInputDiagnostics.h
-@@ -0,0 +1,72 @@
-+#pragma once
-+// GeneralsX @feature Codex 16/10/2026 Read-only browser input pipeline telemetry.
-+#ifdef __EMSCRIPTEN__
-+#include <SDL3/SDL.h>
-+#include <emscripten.h>
-+#include "GameClient/GameClient.h"
-+#include "GameClient/GameWindow.h"
-+#include "GameClient/GameWindowManager.h"
-+#include "GameClient/InGameUI.h"
-+#include "GameClient/Mouse.h"
-+#include "GameLogic/GameLogic.h"
-+#include "Common/GlobalData.h"
-+
-+struct GxWebInputCounters {
-+    unsigned polled = 0, mouseIn = 0, mouseOut = 0, mouseDropped = 0;
-+    unsigned buttonIn = 0, buttonOut = 0, buttonDropped = 0;
-+    unsigned keyIn = 0, keyOut = 0, keyDropped = 0, updates = 0;
-+    Uint64 sampledAt = 0;
-+};
-+inline GxWebInputCounters& gxWebInputCounters() {
-+    // All accesses happen on the engine thread; the browser receives copies.
-+    static GxWebInputCounters counters;
-+    return counters;
-+}
-+inline void gxWebMouseEvent(const SDL_Event& event, int stage) {
-+    GxWebInputCounters& c = gxWebInputCounters();
-+    bool button = event.type == SDL_EVENT_MOUSE_BUTTON_DOWN || event.type == SDL_EVENT_MOUSE_BUTTON_UP;
-+    if (stage == 0) { ++c.mouseIn; if (button) ++c.buttonIn; }
-+    if (stage == 1) { ++c.mouseOut; if (button) ++c.buttonOut; }
-+    if (stage == 2) { ++c.mouseDropped; if (button) ++c.buttonDropped; }
-+}
-+inline int gxWebWindowId(GameWindow* window) { return window ? window->winGetWindowId() : 0; }
-+inline void gxWebInputSample(bool active) {
-+    GxWebInputCounters& c = gxWebInputCounters();
-+    ++c.updates;
-+    Uint64 now = SDL_GetTicks();
-+    if (now - c.sampledAt < 5000) return;
-+    c.sampledAt = now;
-+    const MouseIO* mouse = TheMouse ? TheMouse->getMouseStatus() : nullptr;
-+    // EM_ASM's generated argument list is limited. Copy numeric state through
-+    // one bounded stack array; the synchronous proxy keeps both pointers alive.
-+    const unsigned values[] = {
-+       (unsigned)now, c.updates, c.polled, c.mouseIn, c.mouseOut, c.mouseDropped,
-+       c.buttonIn, c.buttonOut, c.buttonDropped, c.keyIn, c.keyOut, c.keyDropped,
-+       (unsigned)active, TheGameLogic ? TheGameLogic->getFrame() : 0,
-+       TheGameClient ? TheGameClient->getFrame() : 0,
-+       (unsigned)(TheInGameUI ? TheInGameUI->getInputEnabled() : true),
-+       (unsigned)(TheGameLogic ? TheGameLogic->isGamePaused() : false),
-+       (unsigned)(TheWindowManager ? gxWebWindowId(TheWindowManager->winGetCapture()) : 0),
-+       (unsigned)(TheWindowManager ? gxWebWindowId(TheWindowManager->winGetGrabWindow()) : 0),
-+       (unsigned)(TheWindowManager ? gxWebWindowId(TheWindowManager->winGetFocus()) : 0),
-+       (unsigned)(mouse ? mouse->leftState : 0), (unsigned)(mouse ? mouse->rightState : 0),
-+       (unsigned)SDL_GetMouseState(nullptr, nullptr), (unsigned)(SDL_GetKeyboardFocus() != nullptr)
-+    };
-+    MAIN_THREAD_EM_ASM({
-+        if (!window.gxDiagnostics) return;
-+        // Never let optional telemetry throw across a synchronous engine proxy.
-+        try {
-+            const v = Array.from(HEAPU32.subarray($0 >>> 2, ($0 >>> 2) + 24));
-+            window.gxDiagnostics.engine({
-+                ticksMs: v[0], updates: v[1], polled: v[2], mouseIn: v[3], mouseOut: v[4],
-+                mouseDropped: v[5], buttonIn: v[6], buttonOut: v[7], buttonDropped: v[8],
-+                keyIn: v[9], keyOut: v[10], keyDropped: v[11], active: !!v[12],
-+                logicFrame: v[13], clientFrame: v[14], inputEnabled: !!v[15], paused: !!v[16],
-+                captureWindow: v[17], grabWindow: v[18], focusWindow: v[19],
-+                leftState: v[20], rightState: v[21], sdlButtons: v[22],
-+                sdlKeyboardFocus: !!v[23], map: UTF8ToString($1)
-+            });
-+        } catch (error) { console.error('[diagnostics] engine sample failed', error); }
-+    }, values, TheGlobalData ? TheGlobalData->m_mapName.str() : "");
-+}
-+#endif
++    # GeneralsX @build Codex 16/10/2026 Maintain the pinned SDL investigation patch.
++    # The patch has no compiled probes when GX_WEB_INPUT_DIAGNOSTICS is OFF.
++    if(EMSCRIPTEN)
++        find_program(GX_PATCH_PYTHON NAMES python3 REQUIRED)
++        execute_process(COMMAND "${GX_PATCH_PYTHON}"
++            "${CMAKE_SOURCE_DIR}/scripts/web/apply-sdl-diagnostics.py"
++            "${sdl3_SOURCE_DIR}" "${CMAKE_SOURCE_DIR}/Patches/sdl3-input-diagnostics.patch"
++            COMMAND_ERROR_IS_FATAL ANY)
++    endif()
+     
+     # GeneralsX @bugfix BenderAI 22/02/2026 (updated 24/02/2026 for macOS)
+     # Before SDL3_image build: force PNG discovery to platform-specific libpng
 diff --git a/docs/DEV_BLOG/2026-10-DIARY.md b/docs/DEV_BLOG/2026-10-DIARY.md
 new file mode 100644
-index 0000000..1db232f
+index 0000000..dac8455
 --- /dev/null
 +++ b/docs/DEV_BLOG/2026-10-DIARY.md
-@@ -0,0 +1,171 @@
+@@ -0,0 +1,232 @@
 +# Development Diary — October 2026
++
++## 2026-10-16: Preserve actual font-load error output
++
++- Keep failed asset-manager font loads visible in release stderr after removing
++  verbose tracing; DEBUG_CRASH alone can compile out in release mode. Expected
++  fallback misses remain silent. Full final WASM build validates the change.
++
++## 2026-10-16: Gate and deepen temporary input diagnostics
++
++- Default all existing/new C++ and SDL probes off at compile time, and browser
++  collection off at export/runtime. Server writes require an explicit separate
++  debug deployment config; disabled clients remove hooks and discard retries.
++- Add bounded atomic SDL enqueue/filter/full/allocation counters, locked
++  queue/head/tail invariants, poll/early-return counts, public enabled/filter
++  state, separate worker/main SDL errors, exact WASM bytes and allocator usage.
++  Maintain the dependency change as a pinned, hash-validated patch.
++- Reserve recent pipeline snapshots through interaction storms, capture worker
++  errors, and provide a bounded loopback-only collector for local Chrome soak.
++- Actual SDL stress reproduces the threadless orphaned queue twice; corrected
++  SDL delivers 524,288 ordered events. OFF build has no bridge or probe symbols.
++- See the investigation report for reproducible commands, evidence limits and
++  how to remove temporary telemetry while retaining the permanent fixes.
++
++## 2026-10-16: Enable SDL synchronization for the worker game
++
++- Explicitly enable SDL_PTHREADS for Emscripten. SDL defaults this option off
++  even with -pthread, selecting no-op mutexes while browser callbacks and the
++  game worker share the event queue and other SDL state. Fail configuration if
++  pthread support cannot be built instead of silently accepting no-op locks.
++- A harness using the actual SDL library cannot create its producer thread
++  before this fix. With pthread support it passes 18 checks including 4,096
++  concurrently produced and consumed events in order, queue-full failures,
++  filter rejection, runtime-disabled telemetry and shutdown.
++- Enabled full WASM build passed. This repairs a synchronization defect; the
++  original intermittent production freeze still needs long-session validation.
++
++## 2026-10-16: Repair browser renderer resource ownership
++
++- Retain render-target texture parents through rebind, reset and device
++  destruction; release WebGL textures, FBOs and vertex/index buffers when their
++  final COM references are released.
++- Bound the shader program cache to 256 entries with LRU eviction instead of
++  leaking uncached program objects after the cache fills.
++- Actual production-wrapper fixtures reproduce missing deletes and parent
++  lifetime failures on the starting baseline and pass after the fixes. Shader
++  overflow validation exercises 300 distinct states and drawing after eviction.
++- These are proven resource leaks; a causal link to the input freeze remains
++  unproven.
++- Live GL ownership is bounded; Emscripten 4.0.10 still grows numeric handle
++  tables under continual shader eviction because deleted IDs are not reused.
++
++## 2026-10-16: Remove verbose font and INI trace producers
++
++- Remove old per-character, caption, tooltip and font lookup traces at their
++  C++ producers, plus nonerror INI loader tracing. These messages otherwise
++  cross the Emscripten worker boundary before the browser can discard them.
++- Preserve INI error messages, font-load failure reporting and font behavior.
++- This removes a confirmed source of avoidable traffic; it does not establish
++  why SDL event delivery stopped in the reported session.
++
++Validation: source review; full WASM validation follows the diagnostic changes.
 +
 +## 2026-10-16: Persistent diagnostics for intermittent input freezes
 +
@@ -1350,6 +2076,186 @@ index 0000000..1db232f
 +after reload. Fullscreen entered through native browser interaction. A fresh
 +headerless static subpath passed the isolation/environment check. Eight Python
 +tests and six Node tests pass. Campaign completion and multiplayer are untested.
+diff --git a/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md b/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md
+new file mode 100644
+index 0000000..02c30c8
+--- /dev/null
++++ b/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md
+@@ -0,0 +1,101 @@
++# Browser input freeze investigation — 16 October 2026
++
++## Failure boundary and mechanism
++
++The reported production session continued advancing simulation frames after SDL
++polled/input counters stopped. DOM input and SDL raw button state still changed.
++Existing reports did not measure SDL's internal queue, so its exact corrupted
++state in that session remains unproven.
++
++The browser build used `SDL_PTHREADS=OFF`, SDL's Emscripten default even with
++compiler `-pthread`. This selects `SDL_THREADS_DISABLED` and no-op mutexes.
++The custom Pointer Lock bridge installs callbacks on the browser main thread
++which call SDL's pointer handler directly, while `PROXY_TO_PTHREAD` runs game
++polling on a worker. The shared queue therefore lacked synchronization. SDL's
++thread identity, TLS and error buffers also used the threadless backend.
++Keyboard callback proxying can differ; direct pointer callbacks alone establish
++the unsafe concurrency.
++
++A specific interleaving orphans the queue: while cutting sole event E, the
++consumer sets head=E.next=null. The producer appends N through old tail E and
++sets tail=N. The consumer then sees E is no longer tail and leaves tail=N.
++Later pushes append to the unreachable chain, while polling sees null head.
++Raw state can keep changing while event delivery remains stopped.
++
++## Actual-library reproduction
++
++The maintained C harness links the real SDL archive; an isolated threadless
++baseline never replaces the game archive:
++
++```sh
++GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh
++python3 scripts/build-sdl-diagnostics-test.py
++python3 scripts/build-sdl-diagnostics-test.py --raw-pthread-stress
++# Expected failures: reproduce the old unsupported-thread configuration/race.
++python3 scripts/build-sdl-diagnostics-test.py --threadless-baseline
++python3 scripts/build-sdl-diagnostics-test.py --threadless-baseline --raw-pthread-stress
++```
++
++Correctly threaded SDL passes 18 primary checks: 4,096 concurrent ordered events,
++filter rejection, full 65,535-event queue failure, shutdown and disabled probes.
++The old library fails `SDL_CreateThread` because threads are unsupported.
++
++Raw-pthread stress simulates actual browser/worker concurrency without SDL
++thread creation. The old library reproduced the orphan on its first round:
++138/4,096 events consumed, internal count=3,958, head absent, tail present.
++A repeat consumed 170, count=3,926, with the same invariant failure. Corrected SDL
++delivered all 524,288 ordered events with zero inconsistencies. Stress scheduling
++is nondeterministic; a passing run alone does not exclude all possible races.
++
++The permanent fix explicitly enables the supported `SDL_PTHREADS` backend and
++rejects configuration if it cannot be built. This is strong mechanism evidence;
++long real-game sessions are still required to validate the production scenario.
++No queue reset, watchdog, synthesized input or simulation change is introduced.
++
++## Separate supported permanent fixes
++
++- Remove old font/glyph/caption/tooltip and nonerror INI trace producers before
++  Emscripten worker transport. Preserve real INI and font-add errors.
++- Delete owned WebGL textures/FBOs and vertex/index buffers at final COM release;
++  retain render-target parents through rebind/reset/destruction; bound shader
++  programs using 256-entry LRU eviction. Actual GPU fixtures fail on the starting
++  baseline and pass after the fixes (130 resource checks, 13 shader/draw checks).
++  Emscripten's GL IDs still grow monotonically: deleted slots no longer retain
++  GL objects, but table capacity can grow.
++- The earlier approximately 3 GB browser JS heap is not a measurement of WASM
++  memory or proof of its 4 GB limit. New probes distinguish both independently.
++
++## Temporary probes, gates and removal
++
++`GX_WEB_INPUT_DIAGNOSTICS` defaults OFF. The default build has no old/new C++
++counters, generated telemetry bridge or SDL probe symbols. Explicit ON defines
++only six input boundary sources and the SDL target. A maintained pinned SDL 3.4.2
++patch validates the pristine source hash, applies idempotently and rejects drift.
++
++Browser export/runtime additionally defaults OFF and requires `--diagnostics`.
++The compile manifest binds mode to the successful WASM hash and rejects an
++instrumented export of a compiled-off/stale engine. Server writes default OFF;
++an ignored generated config enables only the current debug deployment in the
++existing Pages project. Access identities/JWTs, private R2 and retention stay
++unchanged. Exported source includes independent engine-version provenance.
++
++Five-second bounded snapshots include poll/early-return counts, public pending
++count, filter/event-enabled state, atomic push/enqueue/filter/full/allocation
++failures, sentinels, and locked internal count/head/tail-presence invariants.
++Separate bounded game/main-runtime SDL error strings are copied without clearing
++errors. WASM pages reconstruct exact bytes even at 4 GiB. dlmalloc used/free/arena
++is sampled every 30 seconds to limit free-list walking. Numeric sample sequences
++and SDL/browser timestamps correlate streams; no typed keys or raw pointers are
++recorded. Probes do not filter, drain or reset input.
++
++The browser ring/chunks/retries are bounded and preferentially retain eight
++recent engine/browser samples during interaction storms. Disable restores hooks,
++removes listeners, cancels timers/RAF/observers, aborts requests and discards
++persisted retries. Current clients poll the server gate every 30 seconds. Older
++already-open versions cannot be rewritten remotely: server rejection blocks
++writes, and reload closes their old collector lifecycle.
++
++See the wrapper hosting guide for the opt-in loopback collector and exact
++shutdown/removal commands. Revert dedicated temporary telemetry commits while
++retaining permanent logging, WebGL and SDL synchronization fixes. Rebuild SDL
++from fresh dependency sources after removing the maintained patch.
+diff --git a/resources/gitinfo/git_watcher.cmake b/resources/gitinfo/git_watcher.cmake
+index 40ae042..4ce5f09 100644
+--- a/resources/gitinfo/git_watcher.cmake
++++ b/resources/gitinfo/git_watcher.cmake
+@@ -308,6 +308,8 @@ endfunction()
+ function(SetupGitMonitoring)
+     add_custom_target(check_git
+         ALL
++        # GeneralsX @build Codex 08/10/2026 Quote paths containing shell metacharacters.
++        VERBATIM
+         DEPENDS ${GIT_PRE_CONFIGURE_FILE}
+         BYPRODUCTS
+             ${GIT_POST_CONFIGURE_FILE}
+diff --git a/scripts/web/apply-sdl-diagnostics.py b/scripts/web/apply-sdl-diagnostics.py
+new file mode 100644
+index 0000000..38cb1b9
+--- /dev/null
++++ b/scripts/web/apply-sdl-diagnostics.py
+@@ -0,0 +1,23 @@
++#!/usr/bin/env python3
++"""Apply the maintained temporary SDL 3.4.2 patch, fail closed on source drift."""
++from pathlib import Path
++import hashlib
++import subprocess
++import sys
++
++PRISTINE = '072576aed2027797079a92dfe1d2610f67afeb70dab90262866158576a7630b8'
++PATCHED = 'eca9e914c6851641581e75228e83cfe78b382023c6f8f8c962ac0270118ae782'
++
++def apply(source, patch):
++    target = source / 'src/events/SDL_events.c'
++    digest = hashlib.sha256(target.read_bytes()).hexdigest()
++    if digest == PATCHED:
++        return
++    if digest != PRISTINE:
++        raise SystemExit('SDL diagnostics patch requires the pinned pristine SDL 3.4.2 source')
++    subprocess.run(['patch', '--batch', '-p1', '-i', str(patch.resolve())], cwd=source, check=True)
++    if hashlib.sha256(target.read_bytes()).hexdigest() != PATCHED:
++        raise SystemExit('SDL diagnostics patch verification failed')
++
++if __name__ == '__main__':
++    apply(Path(sys.argv[1]), Path(sys.argv[2]))
+diff --git a/scripts/web/make-dist.sh b/scripts/web/make-dist.sh
+index b60ed7b..12cc5c8 100755
+--- a/scripts/web/make-dist.sh
++++ b/scripts/web/make-dist.sh
+@@ -45,7 +45,11 @@ mkdir -p "$DIST"
+ 
+ # ── Shell ─────────────────────────────────────────────────────────────────────
+ echo "==> Shell"
+-cp "$REPO_ROOT"/web/shell/*.js "$REPO_ROOT"/web/shell/index.html "$DIST/"
++cp "$REPO_ROOT"/web/shell/*.js "$REPO_ROOT"/web/shell/index.html "$REPO_ROOT"/web/shell/saves.html "$DIST/"
++# GeneralsX @feature Codex 08/10/2026 Include the launcher theme and bucket configuration.
++cp "$REPO_ROOT"/web/shell/launcher.css "$REPO_ROOT"/web/shell/launcher-config.json "$DIST/"
++mkdir -p "$DIST/art"
++cp -R "$REPO_ROOT/web/shell/art/." "$DIST/art/"
+ mkdir -p "$DIST/i18n"
+ cp -R "$REPO_ROOT/web/shell/i18n/." "$DIST/i18n/"
+ cp "$REPO_ROOT"/web/shell/brotli_bg.wasm "$DIST/"   # brotli-wasm decoder blob
+diff --git a/scripts/web/packer.py b/scripts/web/packer.py
+index fc58f80..fe2f54a 100644
+--- a/scripts/web/packer.py
++++ b/scripts/web/packer.py
+@@ -34,7 +34,8 @@ import os, sys, json, struct, time, hashlib
+ from concurrent.futures import ProcessPoolExecutor
+ import brotli
+ 
+-BROTLI_QUALITY = 11
++# GeneralsX @build Codex 08/10/2026 Allow fast local packing without changing the format.
++BROTLI_QUALITY = int(os.environ.get('GX_BROTLI_QUALITY', '11'))
+ BROTLI_LGWIN = 24
+ MAGIC = 0x47415844
+ VERSION = 2
 diff --git a/web/shell/archive-core.js b/web/shell/archive-core.js
 new file mode 100644
 index 0000000..12159fb
@@ -86897,12 +87803,54 @@ y@;7*O@RD){u3J3s&yTppNdKSj)+bTG=eJ)1<}E6};B~)!onI0P;x%Fhf&T||jcpnL
 literal 0
 HcmV?d00001
 
+diff --git a/web/shell/coi-serviceworker.js b/web/shell/coi-serviceworker.js
+index ab55a83..13dfdc3 100644
+--- a/web/shell/coi-serviceworker.js
++++ b/web/shell/coi-serviceworker.js
+@@ -66,7 +66,11 @@ if (typeof window === 'undefined') {
+ } else {
+   // ---- Window context: register + one-time reload ----
+   (() => {
+-    if (window.crossOriginIsolated) return; // host already sends the headers
++    const reloadKey = 'gx-coi-reload:' + window.location.pathname;
++    if (window.crossOriginIsolated) {
++      sessionStorage.removeItem(reloadKey);
++      return;
++    }
+ 
+     if (!window.isSecureContext) {
+       console.warn('[coi-sw] not a secure context - service worker cannot help; use HTTPS');
+@@ -94,10 +98,13 @@ if (typeof window === 'undefined') {
+         return navigator.serviceWorker.ready;
+       })
+       .then(() => {
+-        if (!navigator.serviceWorker.controller) {
+-          console.log('[coi-sw] active but not controlling - reloading to pick up COOP/COEP...');
++        // GeneralsX @bugfix Codex 08/10/2026 clients.claim() can already set
++        // controller, but only a new document response enables isolation.
++        if (!window.crossOriginIsolated && !sessionStorage.getItem(reloadKey)) {
++          sessionStorage.setItem(reloadKey, '1');
++          console.log('[coi-sw] reloading document to pick up COOP/COEP...');
+           window.location.reload();
+-        }
++        } else window.gxCoiPending = false;
+       })
+       .catch((e) => {
+         console.error('[coi-sw] registration failed:', e);
+diff --git a/web/shell/diagnostics-config.js b/web/shell/diagnostics-config.js
+new file mode 100644
+index 0000000..1e79373
+--- /dev/null
++++ b/web/shell/diagnostics-config.js
+@@ -0,0 +1,2 @@
++// GeneralsX @feature Codex 16/10/2026 TEMPORARY diagnostics are opt-in at export.
++window.gxDiagnosticsConfig = Object.freeze({enabled: false});
 diff --git a/web/shell/diagnostics.js b/web/shell/diagnostics.js
 new file mode 100644
-index 0000000..fa12c17
+index 0000000..b634135
 --- /dev/null
 +++ b/web/shell/diagnostics.js
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,307 @@
 +// GeneralsX @feature Codex 16/10/2026 Bounded session diagnostics independent of SDL input.
 +(function (root) {
 +  'use strict';
@@ -86919,29 +87867,42 @@ index 0000000..fa12c17
 +  function createRecorder({send, uuid, now = Date.now, persist = () => {}, restored = []}) {
 +    const session = uuid();
 +    let sequence = 0, entries = [], entryBytes = 0, dropped = 0, skipped = 0, budget = 0, errorBudget = 0;
-+    let pending = restored.slice(-MAX_QUEUE), active = null, lastError = null;
++    let pending = restored.slice(-MAX_QUEUE), active = null, lastError = null, stopped = false;
 +    const record = (type, data) => {
++      if (stopped) return;
 +      const entry = {at: now(), type, data};
 +      // Each entry is bounded, including caller-supplied error strings.
 +      const size = bytes(entry);
 +      if (size > 6000) { skipped++; return; }
 +      entries.push(entry); entryBytes += size;
-+      while (entries.length > 256 || entryBytes > 36 * 1024) {
-+        entryBytes -= bytes(entries.shift()); dropped++;
++      while (entries.length > 256 || entryBytes + entries.length + 1 > 36 * 1024) {
++        // TEMPORARY: retain recent pipeline evidence through input/log storms.
++        const reserved = new Set(), samples = {engine: 0, browser: 0};
++        for (let i = entries.length - 1; i >= 0; i--) {
++          const item = entries[i];
++          if (Object.hasOwn(samples, item.type) && samples[item.type]++ < 8) reserved.add(item);
++        }
++        const candidate = entries.findIndex(item => !reserved.has(item));
++        // Large samples still obey the hard byte ceiling, even if all are reserved.
++        const index = candidate < 0 ? 0 : candidate;
++        entryBytes -= bytes(entries.splice(index, 1)[0]); dropped++;
 +      }
 +    };
 +    const log = (type, value) => {
++      if (stopped) return;
 +      const critical = type === 'error' || type === 'rejection' || type === 'console.error';
 +      if (critical ? ++errorBudget > 8 : ++budget > 40) { skipped++; return; }
 +      record(type, clean(value));
 +    };
 +    const interval = data => {
++      if (stopped) return;
 +      if (skipped) record('suppressed', {count: skipped});
 +      skipped = 0; budget = 0; errorBudget = 0;
 +      record('browser', data);
 +    };
 +    const save = () => { try { persist(pending); } catch (e) { lastError = 'local persistence unavailable'; } };
 +    const enqueue = (reason, context) => {
++      if (stopped) return null;
 +      // A rolling history accompanies every chunk; overlap aids reconstruction after loss.
 +      const chunk = {version: 1, session, id: uuid(), sequence: sequence++, reason, dropped,
 +        context, events: entries.slice()};
@@ -86955,11 +87916,13 @@ index 0000000..fa12c17
 +      return chunk.id;
 +    };
 +    const flush = async () => {
++      if (stopped) return;
 +      if (active) return active;
 +      active = (async () => {
-+        while (pending.length) {
++        while (!stopped && pending.length) {
 +          const item = pending[0];
 +          const reply = await send(item);
++          if (stopped) return;
 +          if (!reply?.ok || reply.id !== item.id || reply.session !== item.session) throw new Error('no storage acknowledgement');
 +          // Do not shift a newer item if bounded eviction happened during a slow request.
 +          pending = pending.filter(p => p.id !== item.id); save();
@@ -86967,16 +87930,37 @@ index 0000000..fa12c17
 +        lastError = null;
 +      })();
 +      try { await active; }
-+      catch (e) { lastError = clean(e.message); throw e; }
++      catch (e) { if (!stopped) { lastError = clean(e.message); throw e; } }
 +      finally { active = null; }
 +    };
 +    return {record, log, interval, enqueue, flush, session,
++      disable() { stopped = true; pending = []; entries = []; entryBytes = 0; lastError = null; save(); },
 +      status: () => ({pending: pending.length, lastError, dropped}),
 +      has: id => pending.some(p => p.id === id)};
 +  }
 +  if (typeof module === 'object' && module.exports) { module.exports = {createRecorder, clean, MAX_BYTES}; return; }
 +  if (!root?.document) return;
 +
++  // TEMPORARY investigation gate: no browser activity before explicit export opt-in.
++  const noop = () => {};
++  const inactive = {enabled: false, record: noop, log: noop, start: noop, engine: noop, report: noop, disable: noop};
++  root.gxDiagnostics = inactive;
++  if (root.gxDiagnosticsConfig?.enabled !== true) return;
++
++  let enabled = true, serverReady = false;
++  const cleanup = [], controllers = new Set(), timeouts = new Set();
++  const later = (fn, ms) => {
++    const id = setTimeout(() => { timeouts.delete(id); if (enabled) fn(); }, ms);
++    timeouts.add(id); return id;
++  };
++  const listen = (target, type, fn, options) => {
++    target.addEventListener(type, fn, options);
++    cleanup.push(() => target.removeEventListener(type, fn, options));
++  };
++  const every = (fn, ms) => {
++    const id = setInterval(() => { if (enabled) return fn(); }, ms);
++    cleanup.push(() => clearInterval(id));
++  };
 +  const storageKey = 'gx-diagnostics-pending-v1';
 +  let restored = [];
 +  try {
@@ -86985,28 +87969,61 @@ index 0000000..fa12c17
 +      const data = JSON.parse(raw);
 +      if (Array.isArray(data)) restored = data.filter(c => c?.version === 1 && Array.isArray(c.events) && bytes(c) <= MAX_BYTES);
 +    }
-+  } catch (error) { console.warn('[diagnostics] Could not restore pending chunks'); }
-+  const enabled = location.hostname === 'generals.prosolupov.com' || location.hostname === 'candc-web.pages.dev' ||
-+    location.hostname.endsWith('.candc-web.pages.dev') || location.port === '8788';
++  } catch { /* Persistence is optional. */ }
++  async function request(url, options = {}) {
++    if (!enabled) throw new Error('diagnostics disabled');
++    const controller = new AbortController(); controllers.add(controller);
++    const timeout = later(() => controller.abort(), 12000);
++    try {
++      const response = await fetch(url, {...options, credentials: 'same-origin', redirect: 'error', cache: 'no-store', signal: controller.signal});
++      if (response.status === 410) disable();
++      if (!enabled) throw new Error('diagnostics disabled');
++      return response;
++    } finally { clearTimeout(timeout); timeouts.delete(timeout); controllers.delete(controller); }
++  }
 +  const recorder = createRecorder({uuid: () => crypto.randomUUID(), restored,
-+    persist: queue => localStorage.setItem(storageKey, JSON.stringify(queue)),
++    persist: queue => { if (enabled) localStorage.setItem(storageKey, JSON.stringify(queue)); },
 +    send: async chunk => {
-+      if (!enabled) throw new Error('diagnostic server not configured on this host');
-+      const controller = new AbortController();
-+      const timeout = setTimeout(() => controller.abort(), 12000);
-+      try {
-+        const response = await fetch('/api/diagnostics', {method: 'POST', credentials: 'same-origin',
-+          redirect: 'error', cache: 'no-store', signal: controller.signal,
-+          headers: {'Content-Type': 'application/json'}, body: JSON.stringify(chunk)});
-+        if (!response.ok) throw new Error('HTTP ' + response.status);
-+        return await response.json();
-+      } finally { clearTimeout(timeout); }
++      if (!serverReady) throw new Error('diagnostic server not confirmed');
++      const response = await request('/api/diagnostics', {method: 'POST',
++        headers: {'Content-Type': 'application/json'}, body: JSON.stringify(chunk)});
++      if (!response.ok) throw new Error('HTTP ' + response.status);
++      return await response.json();
 +    }});
++  function disable() {
++    if (!enabled) return;
++    enabled = false; serverReady = false;
++    root.gxDiagnostics.enabled = false;
++    root.gxDiagnostics = inactive;
++    if (root.Module) root.Module.gxDiagnosticsEnabled = false;
++    recorder.disable();
++    for (const restore of cleanup.splice(0)) restore();
++    for (const id of timeouts) clearTimeout(id);
++    timeouts.clear();
++    for (const controller of controllers) controller.abort();
++    controllers.clear();
++    try { localStorage.removeItem(storageKey); } catch { /* Persistence is optional. */ }
++    document.getElementById('gx-diagnostic-status')?.remove();
++  }
++  let checking = false;
++  async function checkConfig() {
++    if (!enabled || checking) return;
++    checking = true;
++    try {
++      const response = await request('/api/diagnostics?config=1');
++      if (response.ok) {
++        const config = await response.json();
++        if (config.enabled === false) disable();
++        else if (enabled && config.enabled === true) serverReady = true;
++      }
++    } catch { /* Retry on next poll; uploads stay blocked until confirmed. */ }
++    finally { checking = false; }
++  }
 +  let engine = null, engineAt = 0, started = false, lastTick = performance.now();
 +  let lastFrame = performance.now(), frameCount = 0, maxFrameGap = 0, longTasks = 0, longTaskMs = 0;
 +  const counts = {pointermove: 0, pointerdown: 0, pointerup: 0, pointercancel: 0, keydown: 0, keyup: 0, wheel: 0};
 +  const element = el => el ? (el.id || el.tagName || 'unknown').slice(0, 80) : null;
-+  const context = () => ({collectorVersion: '2026-10-16.3', build: root.gxEngine?.buildId || 'launcher', userAgent: navigator.userAgent,
++  const context = () => ({collectorVersion: '2026-10-16.4', build: root.gxEngine?.buildId || 'launcher', userAgent: navigator.userAgent,
 +    viewport: [innerWidth, innerHeight, devicePixelRatio], hardwareConcurrency: navigator.hardwareConcurrency,
 +    storage: root.gxStorageKind, isolated: crossOriginIsolated, engine, engineAgeMs: engineAt ? Math.round(performance.now() - engineAt) : null});
 +  const snapshot = () => ({focus: document.hasFocus(), activeElement: element(document.activeElement),
@@ -87017,6 +88034,7 @@ index 0000000..fa12c17
 +    engineAgeMs: engineAt ? Math.round(performance.now() - engineAt) : null});
 +  let toastTimer;
 +  function toast(message) {
++    if (!enabled) return;
 +    let el = document.getElementById('gx-diagnostic-status');
 +    if (!el) {
 +      el = document.createElement('div'); el.id = 'gx-diagnostic-status';
@@ -87025,11 +88043,15 @@ index 0000000..fa12c17
 +      (document.fullscreenElement || document.body).appendChild(el);
 +    }
 +    el.textContent = message; el.hidden = false;
-+    clearTimeout(toastTimer); toastTimer = setTimeout(() => { el.hidden = true; }, 18000);
++    clearTimeout(toastTimer); toastTimer = later(() => { el.hidden = true; }, 18000);
 +  }
 +  let reporting = false;
 +  async function report() {
-+    if (reporting) return;
++    if (!enabled || reporting) return;
++    if (!serverReady) {
++      toast('Отчёт пока нельзя отправить. Проверьте подключение и вход в игру, затем повторите Ctrl + Shift + F8.');
++      return;
++    }
 +    reporting = true;
 +    recorder.record('manual-report', snapshot());
 +    toast('Отправка отчёта…');
@@ -87042,9 +88064,10 @@ index 0000000..fa12c17
 +      toast('Отчёт пока не отправлен. Сохранён в очереди.\nПроверьте подключение и вход в игру. Повтор: Ctrl + Shift + F8');
 +    } finally { reporting = false; }
 +  }
-+  root.gxDiagnostics = {record: recorder.record, log: recorder.log,
-+    start() { if (!started) { started = true; recorder.record('game-start', context()); } },
++  root.gxDiagnostics = {enabled: true, disable, record: recorder.record, log: recorder.log,
++    start() { if (enabled && !started) { started = true; recorder.record('game-start', context()); } },
 +    engine(value) {
++      if (!enabled) return;
 +      // A running engine also arms uploads when an older cached bootstrap lacks start().
 +      root.gxDiagnostics.start();
 +      if (!engine) console.info('[diagnostics] Engine telemetry active');
@@ -87052,47 +88075,52 @@ index 0000000..fa12c17
 +    }, report};
 +  // Do not serialize arbitrary objects, key values, cookies, URLs with query strings or file contents.
 +  for (const level of ['log', 'info', 'warn', 'error']) {
-+    const original = console[level].bind(console);
++    const original = console[level];
 +    console[level] = (...args) => {
-+      original(...args);
++      original.apply(console, args);
 +      recorder.log('console.' + level, args.map(a => a instanceof Error ? a.stack :
 +        ['string', 'number', 'boolean'].includes(typeof a) ? a : '[object]').join(' '));
 +    };
++    cleanup.push(() => { console[level] = original; });
 +  }
-+  window.addEventListener('error', e => recorder.log('error', e.error?.stack || e.message || 'resource load failed'), true);
-+  window.addEventListener('unhandledrejection', e => recorder.log('rejection', e.reason?.stack || e.reason));
-+  window.addEventListener('keydown', e => {
++  listen(window, 'error', e => recorder.log('error', e.error?.stack || e.message || 'resource load failed'), true);
++  listen(window, 'unhandledrejection', e => recorder.log('rejection', e.reason?.stack || e.reason));
++  listen(window, 'keydown', e => {
 +    if (e.ctrlKey && e.shiftKey && e.code === 'F8') {
 +      e.preventDefault(); e.stopImmediatePropagation();
 +      if (!e.repeat) void report();
 +    }
 +  }, true);
 +  // Count events even when SDL propagation stops. Never record typed key values.
-+  for (const type of Object.keys(counts)) window.addEventListener(type, e => {
++  for (const type of Object.keys(counts)) listen(window, type, e => {
 +    if (e.target?.matches?.('input,textarea,[contenteditable="true"]')) return;
 +    counts[type]++;
 +    if (type === 'pointerdown' || type === 'pointerup' || type === 'pointercancel')
 +      recorder.record(type, {button: e.button, buttons: e.buttons, target: element(e.target)});
 +  }, {capture: true, passive: true});
-+  for (const type of ['focus', 'blur', 'online', 'offline']) window.addEventListener(type, () => recorder.record(type, snapshot()));
++  for (const type of ['focus', 'blur', 'online', 'offline']) listen(window, type, () => recorder.record(type, snapshot()));
 +  for (const type of ['visibilitychange', 'fullscreenchange', 'pointerlockchange', 'pointerlockerror'])
-+    document.addEventListener(type, () => recorder.record(type, snapshot()));
-+  window.addEventListener('DOMContentLoaded', () => {
++    listen(document, type, () => recorder.record(type, snapshot()));
++  listen(window, 'DOMContentLoaded', () => {
 +    const canvas = document.getElementById('canvas');
-+    for (const type of ['webglcontextlost', 'webglcontextrestored']) canvas?.addEventListener(type, () => recorder.record(type, snapshot()));
++    for (const type of ['webglcontextlost', 'webglcontextrestored']) canvas && listen(canvas, type, () => recorder.record(type, snapshot()));
 +  });
 +  try {
 +    const observer = new PerformanceObserver(list => {
 +      for (const entry of list.getEntries()) { longTasks++; longTaskMs += entry.duration; }
 +    });
 +    observer.observe({type: 'longtask', buffered: false});
++    cleanup.push(() => observer.disconnect());
 +  } catch (e) { recorder.record('capability', {longTaskObserver: false}); }
++  let frameId;
 +  function frame(time) {
++    if (!enabled) return;
 +    maxFrameGap = Math.max(maxFrameGap, time - lastFrame); lastFrame = time; frameCount++;
-+    requestAnimationFrame(frame);
++    frameId = requestAnimationFrame(frame);
 +  }
-+  requestAnimationFrame(frame);
-+  setInterval(() => {
++  frameId = requestAnimationFrame(frame);
++  cleanup.push(() => cancelAnimationFrame(frameId));
++  every(() => {
 +    if (!started) return;
 +    const now = performance.now();
 +    recorder.interval({...snapshot(), intervalMs: Math.round(now - lastTick), browserFrames: frameCount,
@@ -87100,16 +88128,35 @@ index 0000000..fa12c17
 +    lastTick = now; frameCount = 0; maxFrameGap = 0; longTasks = 0; longTaskMs = 0;
 +  }, 5000);
 +  let failedUntil = 0, failures = 0;
-+  setInterval(async () => {
-+    if (!enabled || (!started && !recorder.status().pending) || Date.now() < failedUntil) return;
++  every(async () => {
++    if (!serverReady || (!started && !recorder.status().pending) || Date.now() < failedUntil) return;
 +    if (started) recorder.enqueue('periodic', context());
 +    try { await recorder.flush(); failures = 0; }
 +    catch { failedUntil = Date.now() + Math.min(300000, 30000 * 2 ** Math.min(++failures, 4)); }
 +  }, 30000);
-+  window.addEventListener('pagehide', () => {
++  listen(window, 'pagehide', () => {
 +    if (started) recorder.enqueue('pagehide', context()); // Persist; next visit retries with acknowledgement.
 +  });
++  // Capture worker exceptions without changing worker messages or application handlers.
++  const NativeWorker = root.Worker;
++  if (NativeWorker) {
++    let observedWorkers = 0;
++    function DiagnosticWorker(...args) {
++      const worker = Reflect.construct(NativeWorker, args, new.target === DiagnosticWorker ? NativeWorker : new.target);
++      if (!enabled || observedWorkers >= 32) return worker;
++      observedWorkers++;
++      listen(worker, 'error', event => recorder.log('error', 'worker: ' + (event.message || 'exception')));
++      listen(worker, 'messageerror', () => recorder.log('error', 'worker: message deserialization failed'));
++      return worker;
++    }
++    Object.setPrototypeOf(DiagnosticWorker, NativeWorker);
++    DiagnosticWorker.prototype = NativeWorker.prototype;
++    root.Worker = DiagnosticWorker;
++    cleanup.push(() => { if (root.Worker === DiagnosticWorker) root.Worker = NativeWorker; });
++  }
 +  recorder.record('session', context());
++  every(checkConfig, 30000);
++  void checkConfig();
 +})(typeof window === 'undefined' ? null : window);
 diff --git a/web/shell/fullscreen.js b/web/shell/fullscreen.js
 new file mode 100644
@@ -87171,6 +88218,446 @@ index 0000000..fe6df7b
 +    button.title = (active ? 'Выйти из полного экрана' : 'На весь экран') + ' (Alt+Enter)';
 +  });
 +});
+diff --git a/web/shell/game.js b/web/shell/game.js
+index 81ddf1b..5fc2e52 100644
+--- a/web/shell/game.js
++++ b/web/shell/game.js
+@@ -44,19 +44,25 @@ async function gxPreloadEngine(onProgress) {
+   window.gxEngine.wasmBinary = bin;
+ }
+ 
++// GeneralsX @performance Codex 15/10/2026 Default to 120 render FPS; WebMain
++// preserves the engine's game-speed limit as the independent logic rate.
++function gxRenderFpsLimit() {
++  const selected = localStorage.getItem('gx-render-fps');
++  const legacy = localStorage.getItem('gx-fps');
++  // Upgrade the old 30 FPS default, but allow an explicit 30 FPS preference
++  // under the new render-only key. Preserve other supported lower settings.
++  const stored = Number(selected ?? (legacy === '30' ? null : legacy));
++  return [30, 60, 90, 120].includes(stored) ? stored : 120;
++}
++
+ function gxGameArguments() {
+   // Pass engine flags via URL: ?args=-headless+-noshellmap etc.
+   const p = new URLSearchParams(location.search);
+   const raw = p.get('args');
+   const args = raw ? raw.split(' ').filter(Boolean) : [];
+-  // Loader settings (index.html #gx-settings): FPS limit -> engine -fps.
+-  // An explicit -fps in ?args= wins.
+-  if (!args.includes('-fps')) {
+-    const fps = parseInt(localStorage.getItem('gx-fps') || '30', 10);
+-    if (fps > 0 && fps !== 30) {
+-      args.push('-fps', String(fps));
+-    }
+-  }
++  // Do not turn the render preference into -fps: that flag changes the
++  // initial engine/game-speed limit before WebMain can decouple the rates.
++  // Explicit diagnostic URL arguments remain available.
+   return args;
+ }
+ 
+@@ -103,6 +109,7 @@ function gxInstallKeyGuard() {
+ }
+ 
+ async function gxStartGame() {
++  window.gxDiagnostics?.start();
+   // Engine wasm was pre-downloaded by gxPreloadEngine() into window.gxEngine.
+   const buildId = window.gxEngine.buildId || 'dev';
+   const wasmBinary = window.gxEngine.wasmBinary;
+@@ -117,6 +124,8 @@ async function gxStartGame() {
+ 
+     window.Module = {
+       canvas: canvas,
++      // GeneralsX @feature Codex 16/10/2026 Temporary diagnostics require explicit release opt-in.
++      gxDiagnosticsEnabled: Boolean(window.gxDiagnostics?.enabled),
+       arguments: gxGameArguments(),
+       // Instantiate from the pre-downloaded binary — no wasm fetch here.
+       wasmBinary: wasmBinary,
+@@ -125,14 +134,11 @@ async function gxStartGame() {
+       // population from window.gxFiles). Read by WebMain.cpp.
+       gxStorageMode: window.gxStorageKind === 'idb' ? 1 : 0,
+       // Loader settings: render FPS limit (see index.html #gx-settings).
+-      gxFps: parseInt(localStorage.getItem('gx-fps') || '30', 10),
++      gxFps: gxRenderFpsLimit(),
+       // Selected build name (stored by loader, consumed by WebMain if needed).
+       gxBuildName: localStorage.getItem('gx-build') || 'default_ru',
+       print: (t) => console.log('[game]', t),
+       printErr: (t) => {
+-        // Drop known per-frame spam (same filter the iOS port uses in its
+-        // log sink) - keeps the console usable during real sessions.
+-        if (t.startsWith('[GX-ISSUE144]') || t.startsWith('[INI] ')) return;
+         console.warn('[game]', t);
+       },
+       onRuntimeInitialized: () => {
+diff --git a/web/shell/i18n/en.js b/web/shell/i18n/en.js
+index a476826..203d900 100644
+--- a/web/shell/i18n/en.js
++++ b/web/shell/i18n/en.js
+@@ -17,7 +17,7 @@ window.gxLocales.en = {
+   'shell.wipe': 'Clear all data',
+   'shell.wipeNote': 'Deletes downloaded resources, saves, and settings (OPFS, IndexedDB, caches). All resources will need to be downloaded again.',
+   'shell.author': 'Author: Lolendor',
+-  'loader.ready': 'Select a build and press Play',
++  'loader.ready': 'Install your game files once. Then press Play.',
+   'loader.engine': 'Downloading engine…',
+   'loader.assets': 'Downloading and unpacking resources…',
+   'loader.files': 'Preparing files…',
+diff --git a/web/shell/i18n/i18n.js b/web/shell/i18n/i18n.js
+index 86d06d4..c7e4037 100644
+--- a/web/shell/i18n/i18n.js
++++ b/web/shell/i18n/i18n.js
+@@ -1,82 +1,14 @@
+-// GeneralsX Web - launch-screen localization.
+-//
+-// Uses the first supported browser language unless the player has explicitly
+-// selected one. This changes the web shell only; it never changes the game
+-// build or its language.
+-//
+-// GeneralsX @feature Lolendor 22/07/2026 Add Russian/English shell localization.
+-
++// GeneralsX @tweak Codex 08/10/2026 This deployment has one Russian interface.
+ 'use strict';
+-
+-(() => {
+-  const STORAGE_KEY = 'gx-language';
+-  const SUPPORTED = ['ru', 'en'];
+-
+-  function storedLanguage() {
+-    try {
+-      const value = localStorage.getItem(STORAGE_KEY);
+-      return SUPPORTED.includes(value) ? value : null;
+-    } catch {
+-      return null;
+-    }
+-  }
+-
+-  function browserLanguage() {
+-    const preferred = navigator.languages && navigator.languages.length
+-      ? navigator.languages
+-      : [navigator.language || 'en'];
+-    for (const locale of preferred) {
+-      const language = String(locale).toLowerCase().split('-')[0];
+-      if (SUPPORTED.includes(language)) return language;
+-    }
+-    return 'en';
+-  }
+-
+-  function interpolate(text, values) {
+-    return String(text).replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key) =>
+-      Object.prototype.hasOwnProperty.call(values || {}, key) ? values[key] : match);
+-  }
+-
+-  const api = {
+-    language: storedLanguage() || browserLanguage(),
+-
+-    t(key, values) {
+-      const current = window.gxLocales[this.language] || {};
+-      const fallback = window.gxLocales.en || {};
+-      return interpolate(current[key] ?? fallback[key] ?? key, values);
+-    },
+-
+-    apply(root = document) {
+-      document.documentElement.lang = this.language === 'en' ? 'en-US' : 'ru-RU';
+-      root.querySelectorAll('[data-i18n]').forEach((element) => {
+-        element.textContent = this.t(element.dataset.i18n);
+-      });
+-
+-      const switcher = document.getElementById('gx-language-switch');
+-      if (switcher) {
+-        const flag = document.getElementById('gx-language-flag');
+-        if (flag) flag.setAttribute('src', this.language === 'ru' ? 'i18n/flags/us.svg' : 'i18n/flags/ru.svg');
+-        switcher.title = this.t('language.switch');
+-        switcher.setAttribute('aria-label', this.t('language.switch'));
+-      }
+-    },
+-
+-    setLanguage(language) {
+-      if (!SUPPORTED.includes(language) || language === this.language) return;
+-      this.language = language;
+-      try { localStorage.setItem(STORAGE_KEY, language); } catch {}
+-      this.apply();
+-      window.dispatchEvent(new CustomEvent('gxlanguagechange', { detail: { language } }));
+-    },
+-
+-    toggle() {
+-      this.setLanguage(this.language === 'ru' ? 'en' : 'ru');
+-    },
+-  };
+-
+-  window.gxI18n = api;
+-  api.apply();
+-
+-  const switcher = document.getElementById('gx-language-switch');
+-  if (switcher) switcher.addEventListener('click', () => api.toggle());
+-})();
++window.gxI18n = {
++  language: 'ru',
++  t(key, values) {
++    return String(window.gxLocales.ru[key] ?? key).replace(/\{([a-zA-Z0-9_]+)\}/g,
++      (match, name) => Object.prototype.hasOwnProperty.call(values || {}, name) ? values[name] : match);
++  },
++  apply(root = document) {
++    document.documentElement.lang = 'ru';
++    root.querySelectorAll('[data-i18n]').forEach(element => { element.textContent = this.t(element.dataset.i18n); });
++  },
++};
++window.gxI18n.apply();
+diff --git a/web/shell/i18n/ru.js b/web/shell/i18n/ru.js
+index 33d13a1..981e7f3 100644
+--- a/web/shell/i18n/ru.js
++++ b/web/shell/i18n/ru.js
+@@ -17,7 +17,7 @@ window.gxLocales.ru = {
+   'shell.wipe': 'Очистить все данные',
+   'shell.wipeNote': 'Удаляет скачанные ресурсы, сейвы и настройки (OPFS, IndexedDB, кэши). Понадобится полная перезагрузка ресурсов.',
+   'shell.author': 'Автор: Lolendor',
+-  'loader.ready': 'Настройте сборку и нажмите Играть',
++  'loader.ready': 'Файлы и сохранения останутся на этом устройстве.',
+   'loader.engine': 'Загрузка движка…',
+   'loader.assets': 'Загрузка и распаковка ресурсов…',
+   'loader.files': 'Подготовка файлов…',
+diff --git a/web/shell/index.html b/web/shell/index.html
+index 8121ab6..c52b8c1 100644
+--- a/web/shell/index.html
++++ b/web/shell/index.html
+@@ -11,109 +11,15 @@
+     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+   }
+   #canvas {
+-    display: block; width: 100vw; height: 100vh;
++    display: block; position: fixed; inset: 0; width: 100vw !important; height: 100vh !important;
+     background: #000; outline: none;
+   }
+-  #gx-overlay {
+-    position: fixed; inset: 0; z-index: 10;
+-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+-    background: radial-gradient(ellipse at center, #16202b 0%, #0b0e11 100%);
+-    text-align: center; padding: 24px;
+-  }
+-  /* GeneralsX @feature Lolendor 22/07/2026 Add a flag language switch to the launch screen. */
+-  #gx-language-switch {
+-    position: absolute; top: 16px; right: 18px;
+-    width: 46px; height: 34px; padding: 5px; cursor: pointer;
+-    color: inherit; background: rgba(29, 39, 51, .7);
+-    border: 1px solid #2c3a4a; border-radius: 6px;
+-    line-height: 1; opacity: .8;
+-  }
+-  #gx-language-switch img {
+-    display: block; width: 34px; height: 22px; object-fit: cover;
+-    border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, .22);
+-  }
+-  #gx-language-switch:hover { background: #253242; opacity: 1; }
+-  #gx-language-switch:focus-visible { outline: 2px solid #e8b64c; outline-offset: 3px; }
+-  #gx-title { font-size: 28px; letter-spacing: 2px; margin-bottom: 8px; color: #e8b64c; }
+-  #gx-sub { font-size: 13px; opacity: .6; margin-bottom: 40px; }
+-  #gx-progress-wrap { width: min(520px, 80vw); }
+-  .gx-prog { margin-bottom: 14px; }
+-  .gx-prog:last-child { margin-bottom: 0; }
+-  .gx-prog-head {
+-    display: flex; justify-content: space-between; align-items: baseline;
+-    font-size: 12px; margin-bottom: 5px; opacity: .8;
+-  }
+-  .gx-prog-head .gx-lbl { letter-spacing: .5px; }
+-  .gx-prog-head .gx-val { font-variant-numeric: tabular-nums; opacity: .7; }
+-  #gx-track, #gx-track2 {
+-    width: 100%; height: 12px; border-radius: 6px;
+-    background: #1d2733; overflow: hidden; border: 1px solid #2c3a4a;
+-  }
+-  #gx-bar, #gx-bar2 {
+-    width: 0%; height: 100%;
+-    background: linear-gradient(90deg, #b9821f, #e8b64c);
+-    transition: width .15s linear;
+-  }
+-  #gx-bar2 { background: linear-gradient(90deg, #2f7d5b, #4fce8f); }
+-  #gx-pct { margin-top: 10px; font-size: 15px; }
+-  #gx-detail { margin-top: 6px; font-size: 12px; opacity: .65; min-height: 16px; }
+-  #gx-storage-kind { font-size: 11px; opacity: .4; margin-top: 18px; }
+-  #gx-play {
+-    display: none; margin-top: 28px; padding: 14px 58px;
+-    font-size: 20px; letter-spacing: 3px; cursor: pointer;
+-    color: #0b0e11; background: linear-gradient(180deg, #e8b64c, #b9821f);
+-    border: none; border-radius: 6px; text-transform: uppercase; font-weight: 700;
+-  }
+-  #gx-play:hover { filter: brightness(1.1); }
+-  #gx-settings-btn {
+-    display: none; margin-top: 12px; padding: 8px 22px;
+-    font-size: 13px; letter-spacing: 1px; cursor: pointer;
+-    color: #d8dee6; background: #1d2733; border: 1px solid #2c3a4a;
+-    border-radius: 6px;
+-  }
+-  #gx-settings-btn:hover { background: #253242; }
+-  #gx-settings {
+-    margin-top: 14px; padding: 14px 20px; font-size: 14px;
+-    background: #131b24; border: 1px solid #2c3a4a; border-radius: 6px;
+-    text-align: left;
+-  }
+-  #gx-settings select {
+-    margin-left: 8px; padding: 4px 8px; font-size: 14px;
+-    color: #d8dee6; background: #1d2733; border: 1px solid #2c3a4a; border-radius: 4px;
+-  }
+-  #gx-settings-note { margin-top: 8px; font-size: 11px; opacity: .5; }
+-  #gx-wipe {
+-    display: block; width: 100%; margin-top: 12px; padding: 8px;
+-    font-size: 12px; cursor: pointer; border-radius: 5px;
+-    color: #f0b0b0; background: #2a1616; border: 1px solid #7c3a3a;
+-  }
+-  #gx-wipe:hover { background: #3a1d1d; }
+-  #gx-wipe-note { margin-top: 6px; font-size: 10px; opacity: .45; line-height: 1.4; }
+-  #gx-error {
+-    display: none; margin-top: 24px; max-width: min(640px, 85vw);
+-    padding: 14px 18px; border: 1px solid #7c3a3a; border-radius: 6px;
+-    background: #2a1616; color: #f0b0b0; font-size: 13px; line-height: 1.5;
+-    white-space: pre-wrap; text-align: left;
+-  }
+-  /* GeneralsX @feature Lolendor 22/07/2026 Credit the WebAssembly project on the launch screen. */
+-  .footer-credit {
+-    position: absolute; bottom: 18px; left: 24px; right: 24px;
+-    display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px;
+-    font-size: 12px; color: rgba(216, 222, 230, .55);
+-  }
+-  .footer-credit .gh-link {
+-    display: inline-flex; align-items: center; gap: 6px;
+-    color: #d8dee6; text-decoration: none; opacity: .75;
+-  }
+-  .footer-credit .gh-link:hover { color: #e8b64c; opacity: 1; }
+-  .footer-credit .gh-link:focus-visible { outline: 2px solid #e8b64c; outline-offset: 3px; }
+-  .footer-author, .footer-license { white-space: nowrap; }
+-  .footer-author::before, .footer-license::before { content: "\00b7"; margin-right: 12px; }
+-  @media (max-width: 480px) {
+-    .footer-credit { bottom: 12px; font-size: 11px; gap: 5px 10px; }
+-    .footer-author::before { content: none; margin-right: 0; }
+-  }
+-  /* Floating multiplayer panel (over the running game canvas) */
++  #gx-fullscreen { position: fixed; right: 8px; top: 8px; z-index: 30; color: white;
++    width: 44px; height: 44px; border: 1px solid #687583; border-radius: 4px; background: #101820cc; font-size: 24px; cursor: pointer; }
++  #gx-fullscreen-status { position: fixed; right: 60px; top: 12px; z-index: 31;
++    max-width: min(440px, 75vw); padding: 8px; background: #101820; color: #ffdc91; }
++  #gx-game-cursor { position: fixed; left: 0; top: 0; z-index: 40; pointer-events: none; user-select: none; }
++  #gx-fullscreen-status:empty { display: none; }
+   #gx-mp {
+     position: fixed; top: 10px; right: 10px; z-index: 20;
+     font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+@@ -149,8 +55,11 @@
+   #gx-mp-status { font-size: 11px; opacity: .75; margin-top: 8px; min-height: 28px; line-height: 1.4; }
+   #gx-mp-peers { font-size: 11px; opacity: .6; margin-top: 4px; }
+ </style>
++<link rel="stylesheet" href="launcher.css">
+ </head>
+ <body>
++<button id="gx-fullscreen" type="button" aria-label="На весь экран" title="На весь экран (Alt+Enter)">⤢</button>
++<div id="gx-fullscreen-status" role="status" aria-live="polite"></div>
+ <canvas id="canvas" tabindex="0" style="outline:none" oncontextmenu="event.preventDefault()"></canvas>
+ 
+ <div id="gx-mp" hidden>
+@@ -174,60 +83,51 @@
+   </div>
+ </div>
+ 
++<!-- GeneralsX @feature Codex 08/10/2026 Single-screen Russian game menu using supplied retail artwork. -->
+ <div id="gx-overlay">
+-  <button id="gx-language-switch" type="button" aria-label="Switch language">
+-    <img id="gx-language-flag" src="i18n/flags/us.svg" width="34" height="22" alt="" draggable="false">
+-  </button>
+-  <div id="gx-title">C&amp;C GENERALS: ZERO HOUR</div>
+-  <div id="gx-sub" data-i18n="shell.subtitle">веб-версия &middot; wasm + WebGL2</div>
+-  <div id="gx-progress-wrap">
+-    <div class="gx-prog">
+-      <div class="gx-prog-head"><span class="gx-lbl" data-i18n="shell.download">Загрузка</span><span class="gx-val" id="gx-dl-val">0%</span></div>
+-      <div id="gx-track"><div id="gx-bar"></div></div>
+-    </div>
+-    <div class="gx-prog">
+-      <div class="gx-prog-head"><span class="gx-lbl" data-i18n="shell.unpack">Распаковка</span><span class="gx-val" id="gx-un-val">0%</span></div>
+-      <div id="gx-track2"><div id="gx-bar2"></div></div>
+-    </div>
+-  </div>
+-  <div id="gx-detail" data-i18n="shell.initializing">Инициализация…</div>
+-  <button id="gx-play" data-i18n="shell.play">Играть</button>
+-  <button id="gx-settings-btn" type="button" data-i18n="shell.settings">Настройки</button>
++  <div class="battlefield" aria-hidden="true"></div>
++  <div class="menu-frame" aria-hidden="true"></div>
++  <main class="command-main">
++    <section class="deploy-panel" aria-label="Запуск игры">
++      <h1 id="gx-title"><img class="game-logo" src="art/zero-hour-logo.png" alt="Command &amp; Conquer Generals Zero Hour" width="352" height="149"></h1>
++      <div class="readiness"><span class="connection-light"></span><span id="gx-ready-label" data-ready="false" role="status">Проверка файлов…</span></div>
++      <div id="gx-local-data">
++        <a id="gx-download" class="menu-action" aria-disabled="true" target="_blank" rel="noopener">Скачать игру</a>
++        <small id="gx-package-info">Пакет файлов · tar.gz</small>
++        <button id="gx-select-archive" class="menu-action" type="button">Выбрать файл игры</button>
++        <input id="gx-archive" type="file" accept=".tar.gz,.tgz,application/gzip" hidden>
++        <div id="gx-local-status" role="status" aria-live="polite">Скачайте архив и выберите его здесь.<br>Повторная установка не потребуется.</div>
++        <button id="gx-cancel-import" type="button" hidden>Отменить установку</button>
++      </div>
++      <div id="gx-progress-wrap">
++        <div class="gx-prog"><div class="gx-prog-head"><span id="gx-dl-label" data-i18n="shell.download">Загрузка</span><span id="gx-dl-val">0%</span></div><div class="gx-track"><div id="gx-bar"></div></div></div>
++        <div class="gx-prog"><div class="gx-prog-head"><span data-i18n="shell.unpack">Распаковка</span><span id="gx-un-val">0%</span></div><div class="gx-track"><div id="gx-bar2"></div></div></div>
++      </div>
++      <button id="gx-play" class="menu-action play-action" type="button" disabled>Играть</button>
++      <div id="gx-detail" role="status" data-i18n="shell.initializing">Инициализация…</div>
++      <div id="gx-error" role="alert"></div>
++    </section>
++  </main>
++  <footer class="command-footer"><span>Полный экран — Alt + Enter</span><a href="source/">Исходный код · GPL-3.0</a></footer>
++</div>
++<!-- Compatibility controls stay outside the visible launcher. Saves remain available inside the game. -->
++<div hidden>
++  <button id="gx-select-folder" type="button">Выбрать папку</button><input id="gx-folder" type="file" webkitdirectory multiple>
++  <span id="gx-storage-kind"></span><button id="gx-settings-btn" type="button">Настройки</button>
+   <div id="gx-settings" hidden>
+-    <label><span data-i18n="shell.fpsLimit">Лимит FPS:</span>
+-      <select id="gx-fps">
+-        <option value="30" data-i18n="shell.original">30 (оригинал)</option>
+-        <option value="60">60</option>
+-        <option value="90">90</option>
+-        <option value="120">120</option>
+-        <option value="144">144</option>
+-      </select>
+-    </label>
+-    <label><span data-i18n="shell.build">Сборка:</span>
+-      <select id="gx-build">
+-        <option value="default_ru">default_ru (Generals ZH)</option>
+-      </select>
+-    </label>
+-    <div id="gx-settings-note" data-i18n="shell.settingsNote">Сохраняется в браузере; применяется при запуске игры.</div>
++    <select id="gx-fps"><option value="30">30</option><option value="60">60</option><option value="90">90</option><option value="120" selected>120</option></select>
++    <select id="gx-build"><option value="local">Локальные файлы</option></select>
++    <button id="gx-export-saves" type="button">Скачать сохранения</button><button id="gx-import-saves" type="button">Восстановить сохранения</button>
++    <input id="gx-save-file" type="file" accept=".json,application/json"><div id="gx-backup-status" role="status"></div>
+     <button id="gx-wipe" type="button" data-i18n="shell.wipe">Очистить все данные</button>
+-    <div id="gx-wipe-note" data-i18n="shell.wipeNote">Удаляет скачанные ресурсы, сейвы и настройки (OPFS, IndexedDB, кэши). Понадобится полная перезагрузка ресурсов.</div>
+   </div>
+-  <div id="gx-error"></div>
+-  <div id="gx-storage-kind"></div>
+-  <span class="footer-credit">
+-    <a href="https://github.com/Lolendor/Generals-WebAssembly" target="_blank" rel="noopener noreferrer" class="gh-link">
+-      <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+-      Lolendor/Generals-WebAssembly
+-    </a>
+-    <span class="footer-author" data-i18n="shell.author">Автор: Lolendor</span>
+-    <span class="footer-license">GPL-3.0</span>
+-  </span>
+ </div>
+ 
++<script src="diagnostics-config.js?v=20261016-4"></script>
++<script src="diagnostics.js?v=20261016-4"></script>
+ <script src="coi-serviceworker.js"></script>
+ <script src="brotli.min.js"></script>
+ <script src="i18n/ru.js"></script>
+-<script src="i18n/en.js"></script>
+ <script src="i18n/i18n.js"></script>
+ <script src="storage.js"></script>
+ <script src="signaling.js"></script>
+@@ -235,7 +135,11 @@
+ <script src="loadscreen.js"></script>
+ <script src="lobby.js"></script>
+ <script src="mp-ui.js"></script>
+-<script src="game.js"></script>
++<script src="game.js?v=20261016-4"></script>
++<script src="save-backup.js"></script>
++<script src="local-data.js"></script>
++<script src="pointer-lock.js"></script>
++<script src="fullscreen.js"></script>
+ <script src="loader.js"></script>
+ </body>
+ </html>
 diff --git a/web/shell/launcher-config.json b/web/shell/launcher-config.json
 new file mode 100644
 index 0000000..7bec2b6
@@ -87224,6 +88711,101 @@ index 0000000..b8c2d39
 +@media(max-height:650px) { .command-main { padding-top:35px; padding-bottom:51px; } .deploy-panel { padding:14px 18px; } h1 { margin-bottom:10px; } .game-logo { max-height:100px; } .readiness { margin-bottom:12px; } .menu-action { min-height:38px; padding:9px 12px; font-size:14px; } #gx-package-info { margin:4px 0 10px; } #gx-local-status { margin:9px 0; font-size:11px; min-height:28px; } .play-action { margin-top:10px; } #gx-detail { margin-top:8px; } }
 +@media(max-height:480px) and (min-width:600px) { .deploy-panel { width:620px; display:grid; grid-template-columns:240px 1fr; column-gap:24px; padding:16px; align-items:center; } h1 { grid-column:1; grid-row:1 / 4; } .game-logo { max-height:120px; } .readiness { grid-column:2; margin-bottom:8px; } #gx-local-data { grid-column:2; } #gx-progress-wrap { grid-column:1; grid-row:4; } .play-action { grid-column:2; margin-top:4px; } #gx-detail,#gx-error { grid-column:1 / -1; } #gx-local-status { margin:6px 0; } .command-main { justify-content:center; } }
 +@media(max-height:540px) and (max-width:599px) { .game-logo { max-height:65px; } .deploy-panel { padding:10px 14px; } .readiness { font-size:9px; margin-bottom:8px; } .menu-action { min-height:32px; padding:7px 10px; font-size:13px; } #gx-local-status { margin:6px 0; font-size:10px; } #gx-package-info { margin:3px 0 7px; } .command-main { padding:20px 24px 42px; } }
+diff --git a/web/shell/loader.js b/web/shell/loader.js
+index 37e70ce..25090b2 100644
+--- a/web/shell/loader.js
++++ b/web/shell/loader.js
+@@ -28,7 +28,7 @@ const gxUI = {
+     console.error('[loader]', msg);
+     const el = document.getElementById('gx-error');
+     el.style.display = 'block';
+-    el.textContent = msg;
++    el.textContent = /[А-Яа-яЁё]/.test(msg) ? msg : 'Не удалось запустить игру. Обновите страницу и повторите попытку.';
+     document.getElementById('gx-progress-wrap').style.display = 'none';
+   },
+   download(done, total, detail) {
+@@ -291,15 +291,28 @@ async function gxBoot() {
+     const settingsBtn = document.getElementById('gx-settings-btn');
+     const settingsBox = document.getElementById('gx-settings');
+     const fpsSel = document.getElementById('gx-fps');
+-    fpsSel.value = localStorage.getItem('gx-fps') || '30';
+-    if (![...fpsSel.options].some(o => o.value === fpsSel.value)) fpsSel.value = '30';
+-    fpsSel.addEventListener('change', () => localStorage.setItem('gx-fps', fpsSel.value));
++    fpsSel.value = String(gxRenderFpsLimit());
++    fpsSel.addEventListener('change', () => localStorage.setItem('gx-render-fps', fpsSel.value));
+ 
+     const buildSel = document.getElementById('gx-build');
+-    buildSel.value = localStorage.getItem('gx-build') || 'default_ru';
+-    if (![...buildSel.options].some(o => o.value === buildSel.value)) buildSel.value = 'default_ru';
++    // GeneralsX @bugfix Codex 08/10/2026 Use the packaged installations rather than a hardcoded build.
++    const buildsResponse = await fetch('assets/builds.json', { cache: 'no-cache' });
++    if (!buildsResponse.ok) throw new Error('Game data missing. Run npm run assets.');
++    const builds = await buildsResponse.json();
++    if (!Array.isArray(builds)) throw new Error('Invalid builds.json.');
++    builds.unshift({name: 'local', label: 'Локальные файлы'});
++    buildSel.replaceChildren(...builds.map((build) => {
++      const name = typeof build === 'string' ? build : build.name;
++      return new Option(typeof build === 'string' ? build : (build.label || name), name);
++    }));
++    const savedBuild = localStorage.getItem('gx-build');
++    buildSel.value = [...buildSel.options].some(o => o.value === savedBuild)
++      ? savedBuild : buildSel.options[0].value;
++    localStorage.setItem('gx-build', buildSel.value);
+     buildSel.addEventListener('change', () => localStorage.setItem('gx-build', buildSel.value));
+ 
++    const installLocal = await gxSetupLocalData(storage, buildSel);
++    await gxSetupSaveBackup(storage);
+     settingsBtn.style.display = 'inline-block';
+     settingsBtn.addEventListener('click', () => { settingsBox.hidden = !settingsBox.hidden; });
+ 
+@@ -343,6 +356,10 @@ async function gxBoot() {
+     btn.style.display = 'none';
+     settingsBtn.style.display = 'none';
+     settingsBox.hidden = true;
++    // GeneralsX @bugfix Codex 08/10/2026 Do not allow another import while starting.
++    document.getElementById('gx-local-data').hidden = true;
++    document.getElementById('gx-ready-label').textContent = 'Запуск игры…';
++    document.getElementById('gx-dl-label').textContent = gxText('shell.download');
+ 
+     const build = localStorage.getItem('gx-build') || 'default_ru';
+     const markerKey = 'installed-' + build;
+@@ -356,6 +373,9 @@ async function gxBoot() {
+     gxUI.status('loader.engine');
+     await gxPreloadEngine((received, total) => gxUI.download(received, total));
+ 
++    await installLocal();
++    document.getElementById('gx-local-data').hidden = true;
++
+     // Already installed? Skip the resource download/unpack and go straight to play.
+     const marker = await storage.readMeta(markerKey);
+     if (marker && marker.complete) {
+@@ -368,6 +388,7 @@ async function gxBoot() {
+       document.getElementById('gx-progress-wrap').style.display = 'none';
+       await gxStartGame();
+       gxUI.overlay.style.display = 'none';
++      document.getElementById('gx-fullscreen').hidden = false;
+       return;
+     }
+ 
+@@ -380,7 +401,9 @@ async function gxBoot() {
+     // NOTE: a STABLE url (no cache-buster) so Range resume across page reloads
+     // targets the same resource; freshness is validated by the server ETag in
+     // the resume journal.
+-    const url = 'assets/' + encodeURIComponent(build) + '/build.data';
++    const selectedBuild = builds.find(b => (typeof b === 'string' ? b : b.name) === build);
++    const url = selectedBuild.url || ('assets/' + encodeURIComponent(build) + '/build.data');
++    await storage.requestPersist();
+     const journalKey = 'unpack-journal-' + build;
+     gxUI.status('loader.assets');
+     const result = await gxStreamExtract(url, storage, journalKey);
+@@ -400,6 +423,7 @@ async function gxBoot() {
+     document.getElementById('gx-progress-wrap').style.display = 'none';
+     await gxStartGame();
+     gxUI.overlay.style.display = 'none';
++      document.getElementById('gx-fullscreen').hidden = false;
+   } catch (e) {
+     gxUI.error(e && e.message ? e.message : String(e));
+   }
 diff --git a/web/shell/local-data.js b/web/shell/local-data.js
 new file mode 100644
 index 0000000..3147dc9

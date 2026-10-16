@@ -1,0 +1,2 @@
+# Preserve embedded upstream/context whitespace in the reproducible source patch.
+patches/*.patch -whitespace
