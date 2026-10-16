@@ -25,8 +25,10 @@ selected predeclared Pages runtime environment before downloading tools, then
 checks the actual compile/export manifest after the build. It never rewrites
 Wrangler configuration. The current investigation has a separate temporary
 `env.production` opt-in; base/local/preview gates stay OFF. Remove that production
-override and the explicit ON build-command prefix when the investigation ends. The cold build must complete within Pages' build timeout;
-cache availability must not substitute for verifying the source compilation.
+override together with its temporary test and the explicit ON build-command
+prefix using the teardown instructions below. The cold build must complete
+within Pages' build timeout; cache availability must not substitute for verifying
+the source compilation.
 
 ## Download package → local import (default)
 
@@ -115,7 +117,7 @@ Keep the project and custom domain so browser saves retain the same origin.
 | Framework | None |
 | Build command | `npm run build:cloud` |
 | Output directory | `release` |
-| Node / Python build environment | `NODE_VERSION=22.16.0`, `PYTHON_VERSION=3.12.8` |
+| Initial Node / Python versions | `.node-version`: `22.16.0`; `.python-version`: `3.12.8` |
 | Compilation concurrency | `BUILD_JOBS=2` |
 | Current temporary investigation only | Explicit ON command below; `env.production.vars.DIAGNOSTICS_ENABLED=true` |
 
@@ -139,6 +141,32 @@ separate from public game-archive delivery. The root `functions/` directory
 provides the diagnostics API. Keep the exported `_headers`: COOP/COEP isolation
 is required for the WASM threads. Independent single-player games need no
 separate game server.
+
+### Verified source builds — 16 October 2026
+
+The existing Pages project's automatic Git builds `e346963e` (root `e2ce89a`)
+and `b3c61c26` (root `91101a0`) completed successfully. Those releases compiled
+diagnostics OFF: plaintext project runtime variables did not supply the intended
+build-only flag. These successes establish the source build path, rather than
+verification of the later production diagnostics opt-in. The final `6433ef1`
+automatic build has separate deployment verification; no successful result for
+that build is claimed here.
+
+A clean Linux ARM64 Docker build, limited to four CPUs and 6 GiB RAM, fetched
+the pinned engine, SDK, tools and fonts and compiled/exported the actual engine
+in 375.31 seconds. The base image pull was separate; no engine, SDK, build, font
+or game cache was copied into that cold source snapshot. The final `6433ef1`
+chain with engine `e3d2712` then passed a warm Linux run in 131.81 seconds,
+including 25 Python and 50 Node tests and requested/compiled/exported/runtime
+gate validation. The warm timing is not another cold build measurement.
+
+That final local release, `e4f908dd9e95`, contains 56 files / 104.9 MiB and no
+game archives. Its 12,836-member source archive passed all part hashes and the
+private-path audit. The source configuration remained unchanged during the
+build, with base/local/preview OFF and temporary production ON. In a plain
+native Chrome tab, launcher fullscreen persisted through Play and intro, and
+Alt+Enter exited and reentered fullscreen after boot. This browser check used
+the actual Linux-built WASM and permanent SDL page-fullscreen guard.
 
 ### Manual deployment fallback
 
@@ -403,8 +431,15 @@ smoke testing covers startup/intro/menu, not reproduction of the original freeze
 
 ### Disable and remove the temporary investigation code
 
-1. Remove the explicit ON build-command prefix (or set `GX_WEB_DIAGNOSTICS=OFF`)
-   and remove/set false the temporary production runtime override. CI rejects
+1. Prepare `git revert 6433ef1` in the root repository. That dedicated temporary
+   commit contains both the production runtime override and
+   `tests/test_temporary_production_diagnostics.py`; remove/revert them together.
+   The test deliberately requires production ON, so changing only the config
+   would make the intended OFF build fail. Before pushing the revert, replace
+   the Pages build command with `BUILD_JOBS=2 npm run build:cloud` (or explicitly
+   set `GX_WEB_DIAGNOSTICS=OFF`). This removes the branch-specific ON prefix;
+   normal production and preview builds then default OFF. Push the revert and
+   verify the resulting build manifest and runtime gate are both OFF. CI rejects
    mismatched compile/runtime gates. To stop current writes without recompiling,
    generate an all-environments OFF config using
    `python3 scripts/diagnostics-deployment-config.py --disable`, then use the
@@ -438,7 +473,7 @@ permanent fixes; no recovery watchdog is installed.
 
 ### Current local regression evidence
 
-The full suite passes 21 Python and 50 Node tests. Actual compiled SDL tests
+The full suite passes 25 Python and 50 Node tests. Actual compiled SDL tests
 reproduce the old orphaned-queue race; corrected threaded ON and default-OFF
 libraries each deliver 524,288 ordered raw-pthread events. The permanent public
 SDL fixture does not depend on the removable diagnostics helpers:

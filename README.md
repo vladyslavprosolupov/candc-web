@@ -62,7 +62,10 @@ selected predeclared Pages runtime environment before downloading tools, then
 checks the actual compile/export manifest after the build. It never rewrites
 Wrangler configuration. The current investigation has a separate temporary
 `env.production` opt-in; base/local/preview gates stay OFF. Remove that production
-override and the explicit ON build-command prefix when the investigation ends.
+override together with its temporary test by reverting commit `6433ef1`, and
+remove the explicit ON build-command prefix when the investigation ends. Follow
+the [complete teardown instructions](hosting/README.md#disable-and-remove-the-temporary-investigation-code)
+to retain the permanent fixes and default-OFF gates.
 
 Optional local asset packing is separate from the hosting build:
 
