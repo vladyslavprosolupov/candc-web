@@ -1,4 +1,7 @@
 import functools
+import json
+import uuid
+from contextlib import contextmanager
 import importlib.util
 from pathlib import Path
 import tempfile
@@ -56,6 +59,67 @@ class ServerTest(unittest.TestCase):
         with urlopen(Request(self.url, method='HEAD', headers={'Range': 'bytes=10-19'})) as res:
             self.assertEqual(res.headers['Content-Length'], '10')
             self.assertEqual(res.read(), b'')
+
+
+@contextmanager
+def diagnostics_server(enabled):
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp, 'static'); root.mkdir()
+        collected = Path(temp, 'collected')
+        handler = functools.partial(serve.Handler, directory=str(root), diagnostics_dir=collected if enabled else None)
+        server = ThreadingHTTPServer(('127.0.0.1', 0), handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
+        try:
+            yield f'http://127.0.0.1:{server.server_port}', collected
+        finally:
+            server.shutdown(); server.server_close(); worker.join()
+
+
+class DiagnosticsServerTest(unittest.TestCase):
+    def chunk(self):
+        return {'version': 1, 'id': str(uuid.uuid4()), 'session': str(uuid.uuid4()),
+                'sequence': 0, 'reason': 'periodic', 'events': [{'at': 1, 'type': 'browser', 'data': {}}]}
+
+    def post(self, origin, body, **headers):
+        return Request(origin + '/api/diagnostics', method='POST', data=json.dumps(body).encode(),
+                       headers={'Origin': origin, 'Content-Type': 'application/json', **headers})
+
+    def test_default_has_no_collector(self):
+        with diagnostics_server(False) as (origin, collected):
+            with urlopen(origin + '/api/diagnostics?config=1') as result:
+                self.assertEqual(json.load(result), {'enabled': False})
+            with self.assertRaises(HTTPError) as error:
+                urlopen(self.post(origin, self.chunk()))
+            self.assertEqual(error.exception.code, 410)
+            self.assertFalse(collected.exists())
+
+    def test_enabled_collector_acknowledges_and_bounds_storage(self):
+        with diagnostics_server(True) as (origin, collected):
+            with urlopen(origin + '/api/diagnostics?config=1') as result:
+                self.assertEqual(json.load(result), {'enabled': True})
+            collected.mkdir()
+            for index in range(128):
+                Path(collected, f'old-{index}.json').write_text('{}')
+            body = self.chunk()
+            with urlopen(self.post(origin, body)) as result:
+                self.assertEqual(json.load(result), {'ok': True, 'id': body['id'], 'session': body['session']})
+            self.assertEqual(json.loads(Path(collected, body['id'] + '.json').read_text()), body)
+            self.assertEqual(len(list(collected.glob('*.json'))), 128)
+
+    def test_rejects_foreign_hosts_origins_size_and_schema(self):
+        with diagnostics_server(True) as (origin, collected):
+            cases = [(self.post(origin, self.chunk(), Origin='https://foreign.test'), 403),
+                     (self.post(origin, self.chunk(), Host='attacker.test'), 403),
+                     (self.post(origin, {**self.chunk(), 'id': '../escape'}), 400),
+                     (self.post(origin, {**self.chunk(), 'large': 'x' * 49152}), 413)]
+            for request, status in cases:
+                with self.assertRaises(HTTPError) as error:
+                    urlopen(request)
+                self.assertEqual(error.exception.code, status)
+            with self.assertRaises(HTTPError) as error:
+                urlopen(Request(origin + '/api/diagnostics?config=1', headers={'Host': 'attacker.test'}))
+            self.assertEqual(error.exception.code, 403)
+            self.assertFalse(collected.exists())
 
 
 if __name__ == '__main__':

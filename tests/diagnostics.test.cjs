@@ -63,18 +63,18 @@ const owner = async () => 'vladyslavprosolupov@gmail.com';
 test('server awaits writes, enforces identity, and retries the same object key', async () => {
   const {handle} = await import('../functions/api/diagnostics.js');
   const writes = new Map(), body = {...chunk(), player: 'spoofed'};
-  const env = {DIAGNOSTICS: {put: async (k, v) => { writes.set(k, JSON.parse(v)); }}};
+  const env = {DIAGNOSTICS_ENABLED: 'true', DIAGNOSTICS: {put: async (k, v) => { writes.set(k, JSON.parse(v)); }}};
   const result = await handle(request(body), env, owner);
   assert.equal(result.status, 200); assert.equal((await result.json()).id, body.id);
   assert.equal(writes.size, 2); assert.equal([...writes.values()][0].player, await owner());
   await handle(request(body), env, owner); assert.equal(writes.size, 2);
-  const failure = await handle(request(body), {DIAGNOSTICS: {put: async () => { throw Error('storage'); }}}, owner);
+  const failure = await handle(request(body), {DIAGNOSTICS_ENABLED: 'true', DIAGNOSTICS: {put: async () => { throw Error('storage'); }}}, owner);
   assert.equal(failure.status, 503);
 });
 
 test('rejects oversized bodies, invalid schema, foreign origins and unauthorized reads', async () => {
   const {handle} = await import('../functions/api/diagnostics.js');
-  const env = {DIAGNOSTICS: {put: async () => assert.fail('must not write')}};
+  const env = {DIAGNOSTICS_ENABLED: 'true', DIAGNOSTICS: {put: async () => assert.fail('must not write')}};
   assert.equal((await handle(request(chunk()), env, async () => null)).status, 401);
   assert.equal((await handle(request(chunk(), 'https://evil.test'), env, owner)).status, 403);
   assert.equal((await handle(request({...chunk(), session: '../escape'}), env, owner)).status, 400);
@@ -91,26 +91,24 @@ test('engine log noise cannot consume the exception logging budget', () => {
   assert.ok(saved[0].events.some(e => e.type === 'error' && e.data === 'critical failure'));
 });
 
-test('the first engine heartbeat arms automatic uploads even with an old bootstrap', async () => {
-  const vm = require('node:vm'), fs = require('node:fs');
-  const intervals = [], requests = [], listeners = {};
-  const window = {addEventListener: (type, fn) => { listeners[type] = fn; }, gxEngine: {buildId: 'test'}};
-  const document = {addEventListener() {}, getElementById: () => null, hasFocus: () => true, visibilityState: 'visible'};
-  window.document = document;
-  const sandbox = {window, document, location: {hostname: 'generals.prosolupov.com'},
-    localStorage: {getItem: () => null, setItem() {}}, crypto: {randomUUID}, TextEncoder, AbortController,
-    setTimeout: () => 1, clearTimeout() {}, setInterval: (fn, ms) => intervals.push({fn, ms}),
-    performance: {now: () => 100}, navigator: {userAgent: 'test', onLine: true},
-    innerWidth: 100, innerHeight: 100, devicePixelRatio: 1, crossOriginIsolated: true,
-    requestAnimationFrame() {}, console: {info() {}, log() {}, warn() {}, error() {}},
-    fetch: async (url, options) => { const body = JSON.parse(options.body); requests.push(body); return {ok: true, json: async () => ({ok: true, id: body.id, session: body.session})}; }};
-  vm.runInNewContext(fs.readFileSync('engine/web/shell/diagnostics.js', 'utf8'), sandbox);
-  window.gxDiagnostics.engine({logicFrame: 30, inputEnabled: true});
-  intervals.find(i => i.ms === 5000).fn();
-  await intervals.find(i => i.ms === 30000).fn();
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0].reason, 'periodic');
-  assert.equal(requests[0].context.engine.logicFrame, 30);
-  assert.ok(requests[0].events.some(e => e.type === 'browser'));
-  assert.ok(requests[0].events.some(e => e.type === 'game-start'));
+
+test('server write gate defaults off and rejects before authorization or storage access', async () => {
+  const {handle} = await import('../functions/api/diagnostics.js');
+  for (const enabled of [undefined, false, true, 'false', 'TRUE', '1']) {
+    const env = {DIAGNOSTICS_ENABLED: enabled, get DIAGNOSTICS() { assert.fail('disabled endpoint must not access storage'); }};
+    const response = await handle(request(chunk()), env, () => assert.fail('disabled endpoint must not authorize'));
+    assert.equal(response.status, 410);
+  }
+});
+
+test('config status requires authentication, works without storage, and reports exact gate', async () => {
+  const {handle} = await import('../functions/api/diagnostics.js');
+  const req = () => new Request('https://game.test/api/diagnostics?config=1');
+  assert.equal((await handle(req(), {}, async () => null)).status, 401);
+  for (const enabled of [undefined, 'false', 'true']) {
+    const response = await handle(req(), {DIAGNOSTICS_ENABLED: enabled}, async () => 'romamitch@icloud.com');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {enabled: enabled === 'true'});
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  }
 });

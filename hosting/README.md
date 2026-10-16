@@ -188,9 +188,46 @@ contains experimental WebRTC/MQTT multiplayer and public signaling defaults in
 managed matchmaking/TURN service. Single-player hosting needs neither.
 
 
-## Session diagnostics (16 October 2026)
+## Temporary session diagnostics (16 October 2026)
 
-The deployed launcher collects bounded diagnostics during gameplay and uploads
+Diagnostics are temporary investigation code and **off by default**. Normal
+`npm run export` writes `diagnostics-config.js` with `enabled: false`. Source
+launches also default off. No diagnostics input listeners, hotkey, console or
+Worker hooks, storage reads, timers, frame sampling or uploads run while off.
+
+To opt in, compile with `GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh`, export
+with `npm run export -- --diagnostics`, and set the existing Pages project's
+`DIAGNOSTICS_ENABLED` variable to the exact string `true`. Both the client
+export and server gate must be enabled. This uses the same existing project;
+it does not change Access policies, permitted identities or storage access.
+Default/missing server configuration rejects POSTs with HTTP 410 before
+authentication or storage. Authenticated players can read
+`/api/diagnostics?config=1` to check the server gate without storage access.
+
+An enabled client checks server configuration immediately and every 30 seconds.
+Restored chunks cannot upload before the server confirms it is enabled. Set
+`DIAGNOSTICS_ENABLED=false` to stop writes immediately; clients stop collecting
+at their next configuration check or HTTP 410 response. `gxDiagnostics.disable()`
+also stops a running client immediately. Teardown restores console and Worker
+constructors, removes listeners, cancels timers and frame callbacks, disconnects
+the performance observer, aborts pending requests, clears queued chunks and
+removes their localStorage entry. It cannot turn itself back on; a fresh page
+load with explicit opt-in is required. Previously stored R2 objects retain their
+existing retention policy and authorized read behavior.
+
+For a local Chrome investigation, compile/export with the same opt-ins, then run:
+
+```sh
+python3 scripts/serve.py --directory release --port 8095 --diagnostics-dir .local/input-freeze-diagnostics
+```
+
+Open `http://127.0.0.1:8095`. This temporary collector acknowledges UUID chunks
+into the supplied directory (outside the static root), retaining at most 128
+files of at most 48 KiB each. It accepts only loopback requests with the local
+Host and same-origin POSTs. Omit `--diagnostics-dir` to disable it. It does not
+change the production endpoint or its authentication.
+
+When explicitly enabled, the launcher collects bounded diagnostics during gameplay and uploads
 chunks every 30 seconds to `/api/diagnostics` on the same origin. Engine and
 browser snapshots are taken every five seconds. Ctrl+Shift+F8 sends an immediate
 report and displays a Russian confirmation with its UUID **after R2 acknowledges
@@ -210,9 +247,8 @@ Each chunk is at most 48 KiB. The rolling history is bounded to 256 events /
 36 KiB, and the retry queue to 16 chunks. Chunks overlap; use event timestamps
 to reconstruct the timeline. Retries preserve chunk IDs. Failed uploads back
 off up to five minutes. Pending chunks persist in localStorage when available
-and retry after reload. Page exit saves a final chunk locally; delivery at page
-exit is not guaranteed. Static hosts other than our Pages/custom domain collect
-locally but do not auto-upload. Local Pages development uses port 8788.
+and retry after reload only when both gates remain enabled. Page exit saves a final chunk locally; delivery at page
+exit is not guaranteed. An unavailable configuration endpoint prevents uploads.
 
 Storage: private R2 bucket `candc-web-diagnostics`, automatic expiration after
 14 days. No public URL. The endpoint validates Cloudflare Access JWT signatures,
@@ -246,8 +282,9 @@ Deploy from the repository root using `wrangler.jsonc` and `npm ci`:
 
 ```sh
 npm test
-bash scripts/build.sh
-npm run export
+GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh
+npm run export -- --diagnostics
+# Set DIAGNOSTICS_ENABLED=true in the existing Pages project before opting in.
 .local/cloudflare-cli/node_modules/.bin/wrangler pages deploy release --project-name candc-web --branch main
 ```
 

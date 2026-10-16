@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Assemble an asset-free static release with a stripped engine and source bundle."""
+import argparse
 import hashlib
 import json
 from pathlib import Path
@@ -12,11 +13,18 @@ ROOT = Path(__file__).resolve().parents[1]
 ENGINE = ROOT / 'engine'
 OUT = ROOT / 'release'
 
+def diagnostics_config(enabled=False):
+    return '// TEMPORARY diagnostics: explicit export opt-in.\nwindow.gxDiagnosticsConfig = Object.freeze({enabled: ' + ('true' if enabled else 'false') + '});\n'
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--diagnostics', action='store_true', help='Enable temporary input-freeze diagnostics (server gate also required)')
+    args = parser.parse_args()
     OUT.mkdir(exist_ok=True)
     # No broad dist copy: dist/assets contains the private game installation.
     for path in (ENGINE / 'web/shell').glob('*.js'):
         shutil.copy2(path, OUT / path.name)
+    (OUT / 'diagnostics-config.js').write_text(diagnostics_config(args.diagnostics))
     for name in ['index.html', 'saves.html', 'launcher.css', 'launcher-config.json', 'brotli_bg.wasm', 'ice.json']:
         shutil.copy2(ENGINE / 'web/shell' / name, OUT / name)
     shutil.copytree(ENGINE / 'web/shell/art', OUT / 'art', dirs_exist_ok=True)
@@ -40,7 +48,7 @@ def main():
     source_dir = OUT / 'source'
     source_dir.mkdir(exist_ok=True)
     tracked = subprocess.check_output(['git', '-C', str(ENGINE), 'ls-files', '-z']).decode().split('\0')
-    extra = ['Core/GameEngineDevice/Include/WebInputDiagnostics.h', 'web/shell/diagnostics.js', 'web/shell/pointer-lock.js', 'web/shell/local-data.js', 'web/shell/fullscreen.js', 'web/shell/save-backup.js',
+    extra = ['Core/GameEngineDevice/Include/WebInputDiagnostics.h', 'web/shell/diagnostics.js', 'web/shell/diagnostics-config.js', 'web/shell/pointer-lock.js', 'web/shell/local-data.js', 'web/shell/fullscreen.js', 'web/shell/save-backup.js',
              'web/shell/saves.html', 'web/shell/saves-page.js',
              'docs/DEV_BLOG/2026-10-DIARY.md', 'web/shell/archive-core.js', 'web/shell/archive-worker.js',
              'web/shell/launcher.css', 'web/shell/launcher-config.json']

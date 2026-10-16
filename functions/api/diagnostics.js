@@ -38,10 +38,15 @@ async function readBounded(request) {
 
 // Authentication is injectable only for unit tests, never via HTTP or configuration.
 export async function handle(request, env, authorize = authenticate) {
+  // TEMPORARY diagnostics kill switch: reject writes before authentication or storage.
+  if (request.method === 'POST' && env.DIAGNOSTICS_ENABLED !== 'true')
+    return json({error: 'diagnostics disabled'}, 410);
   const email = await authorize(request, env);
   if (!email) return json({error: 'unauthorized'}, 401);
-  if (!env.DIAGNOSTICS) return json({error: 'storage unavailable'}, 503);
   const url = new URL(request.url);
+  if (request.method === 'GET' && url.searchParams.get('config') === '1')
+    return json({enabled: env.DIAGNOSTICS_ENABLED === 'true'});
+  if (!env.DIAGNOSTICS) return json({error: 'storage unavailable'}, 503);
   if (request.method === 'POST') {
     if (request.headers.get('Origin') !== url.origin ||
         !request.headers.get('Content-Type')?.startsWith('application/json')) return json({error: 'origin or type'}, 403);
