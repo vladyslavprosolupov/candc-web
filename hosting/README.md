@@ -249,7 +249,10 @@ actual WASM heap size, dlmalloc usage sampled every 30 seconds, JS heap size,
 browser frame gaps/long tasks, and bounded console/error messages. SDL probes
 include queue counts/head/tail presence, enqueue failures, filter rejections,
 poll calls, enabled input types, missing-window returns and separate bounded
-worker/main-thread SDL errors. Probes never clear errors, dequeue additional
+worker/main-thread SDL errors. OpenAL totals scan once per 30 seconds: live
+buffers/sources, actual WebAudio float32 PCM bytes, zero-reference buffers and
+the pending AL error. These are numeric snapshots; no AudioBuffer objects or
+resource identities are retained. Probes never clear errors, dequeue additional
 events, reset queues or attempt input recovery.
 Key values, text input, cookies, tokens, save files and game assets are not
 collected. Error strings are truncated and common secrets/URL queries redacted.
@@ -329,9 +332,13 @@ smoke testing covers startup/intro/menu, not reproduction of the original freeze
    lacks `SDL_GXGetInputDiagnostics` / `SDL_GXSetInputDiagnosticsEnabled` symbols.
    The manifest binds its compile mode to the exact successful WASM hash;
    `--diagnostics` rejects a compiled-off or stale binary.
-3. Review and revert the dedicated temporary telemetry commits in both repos,
-   retaining permanent logging, WebGL ownership/cache and SDL pthread fixes.
-   Remove diagnostics scripts/config/includes/probe call sites, the maintained
+3. Remove the complete temporary overlay in both repos while retaining permanent
+   logging, WebGL ownership/cache, SDL pthread and OpenAL ownership, residency
+   and shutdown fixes. The preserved baseline
+   already contained an always-enabled collector: **do not blindly revert the
+   OFF-gate commits**, which would restore that behavior. Keep both gates OFF
+   until the original and added probes are removed together. Remove diagnostics
+   scripts/config/includes/probe call sites, the maintained
    SDL diagnostics patch/apply hook, endpoint/route and its deployment binding
    when reports are no longer needed. Rebuild SDL from a fresh dependency source
    after removing the maintained patch. Existing private reports continue to
@@ -341,3 +348,38 @@ smoke testing covers startup/intro/menu, not reproduction of the original freeze
 commit. Exported source includes it, the maintained SDL patch and regression
 harnesses. See the engine investigation report for the race reproducer and
 permanent fixes; no recovery watchdog is installed.
+
+
+### Current local regression evidence
+
+The full suite passes 16 Python and 47 Node tests. Actual compiled SDL tests
+reproduce the old orphaned-queue race; corrected threaded ON and default-OFF
+libraries each deliver 524,288 ordered raw-pthread events. The permanent public
+SDL fixture does not depend on the removable diagnostics helpers:
+
+```sh
+python3 scripts/test-sdl-event-queue.py
+# Expected negative control; builds an isolated library without diagnostics.
+python3 scripts/test-sdl-event-queue.py --threadless-baseline --raw-pthread-only
+python3 scripts/test-audio-cache.py --accounting
+python3 scripts/test-audio-shutdown.py
+```
+
+The audio fixture compiles byte-identical production cache/header code with the
+real SDK OpenAL implementation. File/FFmpeg input and the WebAudio surface are
+controlled test stubs; this is not real browser audio playback. Its 25 checks
+cover leases, actual attached-buffer deletion rules, failed deletion ownership,
+old-order stopped-source pressure versus the production detach helper, bounded
+repeated evictions, decoded 8/16-bit PCM and WebAudio float32 budget charges.
+Historical cache code fails ownership checks; the pre-accounting fix fails four
+residency/admission checks. A separate shutdown fixture extracts the exact
+production manager destructor/closeDevice bodies and uses the same actual
+cache/SDK AL: current ordering passes eight checks; old methods fail four by
+retaining PCM/device references after context shutdown. Current post-fix real-game heap comparison is still
+in progress; source reports do not claim long-session stability before it ends.
+
+A default-OFF engine build independently omits the generated telemetry bridge
+and both SDL probe symbols while retaining real pthread synchronization.
+Wrangler compiles the Pages Function successfully. The explicit debug config
+is generated under ignored `.local/`; `.local/` heap snapshots, downloaded
+reports, local chunks and authentication state are excluded from source export.

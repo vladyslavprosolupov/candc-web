@@ -228,10 +228,10 @@ index f36f675..60a4076 100644
  void GlobalLanguage::reset()
 diff --git a/Core/GameEngineDevice/Include/WebInputDiagnostics.h b/Core/GameEngineDevice/Include/WebInputDiagnostics.h
 new file mode 100644
-index 0000000..2e23147
+index 0000000..e9f9b72
 --- /dev/null
 +++ b/Core/GameEngineDevice/Include/WebInputDiagnostics.h
-@@ -0,0 +1,140 @@
+@@ -0,0 +1,165 @@
 +#pragma once
 +// GeneralsX @feature Codex 16/10/2026 Read-only browser input pipeline telemetry.
 +#if defined(__EMSCRIPTEN__) && defined(GX_WEB_INPUT_DIAGNOSTICS)
@@ -345,6 +345,30 @@ index 0000000..2e23147
 +        if (!window.gxDiagnostics?.enabled) return;
 +        try {
 +            const v = Array.from(HEAPU32.subarray($0 >>> 2, ($0 >>> 2) + 48));
++            // Main-thread WebAudio/OpenAL state is scanned only once per 30s.
++            // Copy counts/bytes, never AudioBuffer objects or AL resource identities.
++            if (v[43] % 6 === 0) {
++                const audio = ({available: typeof AL !== 'undefined', buffers: 0,
++                    sources: 0, audioBytes: 0, unreferenced: 0, error: null, ticksMs: v[0]});
++                try {
++                    if (audio.available) {
++                        for (const id in AL.buffers) {
++                            const buffer = AL.buffers[id];
++                            if (!buffer || !buffer.id) continue;
++                            audio.buffers++;
++                            if (buffer.refCount === 0) audio.unreferenced++;
++                            if (buffer.audioBuf) audio.audioBytes += buffer.audioBuf.length * buffer.audioBuf.numberOfChannels * 4;
++                        }
++                        for (const id in AL.contexts) {
++                            const context = AL.contexts[id];
++                            if (context) for (const source in context.sources) if (context.sources[source]) audio.sources++;
++                        }
++                        // Reading the runtime state preserves alGetError's pending error.
++                        audio.error = AL.currentCtx ? AL.currentCtx.err : null;
++                    }
++                } catch (ignored) { audio.available = false; }
++                window.gxDiagnostics.audioSnapshot = audio;
++            }
 +            window.gxDiagnostics.engine({
 +                ticksMs: v[0], updates: v[1], polled: v[2], mouseIn: v[3], mouseOut: v[4],
 +                mouseDropped: v[5], buttonIn: v[6], buttonOut: v[7], buttonDropped: v[8],
@@ -361,6 +385,7 @@ index 0000000..2e23147
 +                    inactivePeep: v[39], pollCalls: v[40], sentinels: v[41], active: !!v[42], queueCount: v[45],
 +                    hasHead: !!v[46], hasTail: !!v[47]},
 +                sampleSequence: v[43], mainErrorSampled: !!v[44],
++                audio: window.gxDiagnostics.audioSnapshot || null,
 +                map: UTF8ToString($1)
 +            });
 +            // The recorder sanitizes error strings and applies a bounded budget.
@@ -372,6 +397,223 @@ index 0000000..2e23147
 +    }, values, TheGlobalData ? TheGlobalData->m_mapName.str() : "", workerError, mainError);
 +}
 +#endif
+diff --git a/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.cpp b/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.cpp
+index f8a3280..a3ff99e 100644
+--- a/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.cpp
++++ b/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.cpp
+@@ -45,7 +45,6 @@ Bool OpenALAudioFileCache::decodeFFmpeg(OpenAudioFile* file)
+ 			// Directly copy interleaved audio
+ 			audioData.insert(audioData.end(), frame->data[0], frame->data[0] + frame_data_size);
+ 		}
+-		file->m_fileSize += frame_data_size;
+ 		file->m_totalSamples += frame->nb_samples;
+ 		};
+ 
+@@ -56,6 +55,18 @@ Bool OpenALAudioFileCache::decodeFFmpeg(OpenAudioFile* file)
+ 	while (file->m_ffmpegFile->decodePacket()) {
+ 	}
+ 
++	// GeneralsX @bugfix Codex 16/10/2026 Charge resident PCM, not the compressed file size.
++	// Emscripten OpenAL converts every channel to WebAudio float32 storage.
++	size_t residentBytes = audioData.size();
++#ifdef __EMSCRIPTEN__
++	const int bytesPerSample = file->m_ffmpegFile->getBytesPerSample();
++	if (bytesPerSample <= 0 || audioData.size() / bytesPerSample >
++		std::numeric_limits<UnsignedInt>::max() / sizeof(float)) return FALSE;
++	residentBytes = (audioData.size() / bytesPerSample) * sizeof(float);
++#endif
++	if (residentBytes > std::numeric_limits<UnsignedInt>::max()) return FALSE;
++	file->m_fileSize = static_cast<UnsignedInt>(residentBytes);
++
+ 	// Fill the buffer with the audio data
+ 	alBufferData(file->m_buffer, OpenALAudioManager::getALFormat(file->m_ffmpegFile->getNumChannels(), file->m_ffmpegFile->getBytesPerSample() * 8),
+ 		audioData.data(), audioData.size(), file->m_ffmpegFile->getSampleRate());
+@@ -132,8 +143,6 @@ ALuint OpenALAudioFileCache::getBufferForFile(const OpenFileInfo &fileInfo)
+ 		return 0;
+ 	}
+ 
+-	UnsignedInt fileSize = file->size();
+-
+ 	OpenAudioFile openedAudioFile;
+ 	alGenBuffers(1, &openedAudioFile.m_buffer);
+ 	openedAudioFile.m_eventInfo = eventToOpenFrom ? eventToOpenFrom->getAudioEventInfo() : NULL;
+@@ -160,7 +169,11 @@ ALuint OpenALAudioFileCache::getBufferForFile(const OpenFileInfo &fileInfo)
+ 
+ 	openedAudioFile.m_ffmpegFile->close();
+ 
+-	openedAudioFile.m_fileSize = fileSize;
++	// Reject an entry which cannot fit without overflowing the admission sum.
++	if (openedAudioFile.m_fileSize > m_maxSize) {
++		releaseOpenAudioFile(&openedAudioFile);
++		return 0;
++	}
+ 	m_currentlyUsedSize += openedAudioFile.m_fileSize;
+ 	if (m_currentlyUsedSize > m_maxSize) {
+ 		DEBUG_LOG(("Audio Cache is full, trying to free some space\n"));
+@@ -173,6 +186,9 @@ ALuint OpenALAudioFileCache::getBufferForFile(const OpenFileInfo &fileInfo)
+ 		}
+ 	}
+ 
++	// GeneralsX @bugfix Codex 16/10/2026 The first caller owns a lease, just like a cache hit.
++	// Keep the unadmitted temporary at zero while decode/budget failure cleanup runs.
++	openedAudioFile.m_openCount = 1;
+ 	m_openFiles[strToFind] = openedAudioFile;
+ 	return openedAudioFile.m_buffer;
+ }
+@@ -187,7 +203,9 @@ void OpenALAudioFileCache::closeBuffer(ALuint bufferToClose)
+ 	OpenFilesHash::iterator it;
+ 	for (it = m_openFiles.begin(); it != m_openFiles.end(); ++it) {
+ 		if (it->second.m_buffer == bufferToClose) {
+-			--it->second.m_openCount;
++			// GeneralsX @bugfix Codex 16/10/2026 A duplicate close must not wrap an unsigned lease count.
++			DEBUG_ASSERTCRASH(it->second.m_openCount > 0, ("Audio buffer closed without an open lease"));
++			if (it->second.m_openCount > 0) --it->second.m_openCount;
+ 			return;
+ 		}
+ 	}
+@@ -219,26 +237,31 @@ void OpenALAudioFileCache::setMaxSize(UnsignedInt size)
+ }
+ 
+ //-------------------------------------------------------------------------------------------------
+-void OpenALAudioFileCache::releaseOpenAudioFile(OpenAudioFile* fileToRelease)
++Bool OpenALAudioFileCache::releaseOpenAudioFile(OpenAudioFile* fileToRelease)
+ {
+ 	if (fileToRelease->m_openCount > 0) {
+ 		// This thing needs to be terminated IMMEDIATELY.
+ 		TheAudio->closeAnySamplesUsingFile((const void*)(uintptr_t)fileToRelease->m_buffer);
+ 	}
+ 
+-	if (fileToRelease->m_ffmpegFile) {
+-		// Free FFMPEG handles
+-		delete fileToRelease->m_ffmpegFile;
+-	}
+-
++	// GeneralsX @bugfix Codex 16/10/2026 Keep ownership if OpenAL rejects deletion.
++	// A referenced buffer cannot be deleted; forgetting its handle would orphan its PCM.
+ 	if (fileToRelease->m_buffer)
+ 	{
+-		// Free the OpenAL buffer
+ 		alDeleteBuffers(1, &fileToRelease->m_buffer);
++		if (alIsBuffer(fileToRelease->m_buffer)) {
++			DEBUG_LOG(("OpenAL buffer deletion rejected; retaining cached ownership\n"));
++			return FALSE;
++		}
++	}
++	if (fileToRelease->m_ffmpegFile) {
++		delete fileToRelease->m_ffmpegFile;
+ 	}
+ 	fileToRelease->m_ffmpegFile = NULL;
+ 	fileToRelease->m_buffer = 0;
+ 	fileToRelease->m_eventInfo = NULL;
++	fileToRelease->m_openCount = 0;
++	return TRUE;
+ }
+ 
+ //-------------------------------------------------------------------------------------------------
+@@ -300,7 +323,9 @@ Bool OpenALAudioFileCache::freeEnoughSpaceForSample(const OpenAudioFile& sampleT
+ 	for (ait = filesToClose.begin(); ait != filesToClose.end(); ++ait) {
+ 		OpenFilesHashIt itToErase = m_openFiles.find(*ait);
+ 		if (itToErase != m_openFiles.end()) {
+-			releaseOpenAudioFile(&itToErase->second);
++			if (!releaseOpenAudioFile(&itToErase->second)) {
++				return FALSE;
++			}
+ 			m_currentlyUsedSize -= itToErase->second.m_fileSize;
+ 			m_openFiles.erase(itToErase);
+ 		}
+diff --git a/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.h b/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.h
+index 2a1b327..61c8390 100644
+--- a/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.h
++++ b/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioCache.h
+@@ -118,7 +118,8 @@ public:
+ 		UnsignedInt& bitsPerSample);
+ 
+ protected:
+-	void releaseOpenAudioFile(OpenAudioFile* fileToRelease);
++	// GeneralsX @bugfix Codex 16/10/2026 Failed deletion leaves the cache entry owned.
++	Bool releaseOpenAudioFile(OpenAudioFile* fileToRelease);
+ 
+ 	// This function will return TRUE if it was able to free enough space, and FALSE otherwise.
+ 	Bool freeEnoughSpaceForSample(const OpenAudioFile& sampleThatNeedsSpace);
+diff --git a/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioManager.cpp b/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioManager.cpp
+index 408cbaa..1557f70 100644
+--- a/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioManager.cpp
++++ b/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALAudioManager.cpp
+@@ -42,6 +42,7 @@
+ #include "OpenALAudioDevice/OpenALAudioManager.h"
+ #include "OpenALAudioDevice/OpenALAudioStream.h"
+ #include "OpenALAudioCache.h"
++#include "OpenALBufferLease.h"
+ 
+ #include "Common/AudioAffect.h"
+ #include "Common/AudioHandleSpecialValues.h"
+@@ -129,8 +130,12 @@ OpenALAudioManager::~OpenALAudioManager()
+ {
+ 	DEBUG_ASSERTCRASH(m_binkAudio == NULL, ("Leaked a Bink handle. Chuybregts"));
+ 	releaseHandleForBink();
+-	closeDevice();
++	// GeneralsX @bugfix Codex 16/10/2026 Release sources and cached PCM while the context is current.
++	// Emscripten OpenAL cannot delete buffers after closeDevice clears the context.
++	stopAllAudioImmediately();
+ 	delete m_audioCache;
++	m_audioCache = NULL;
++	closeDevice();
+ 
+ 	DEBUG_ASSERTCRASH(this == TheAudio, ("Umm...\n"));
+ 	TheAudio = NULL;
+@@ -1665,7 +1670,8 @@ void OpenALAudioManager::notifyOfAudioCompletion(UnsignedInt audioCompleted, Uns
+ 	playing->m_audioEventRTS->advanceNextPlayPortion();
+ 	if (playing->m_audioEventRTS->getNextPlayPortion() != PP_Done) {
+ 		if (playing->m_type == PAT_Sample) {
+-			closeBuffer(playing->m_bufferHandle);	// close it so as not to leak it.
++			releaseOpenALBufferLease(playing->m_source, playing->m_bufferHandle,
++				[this](ALuint handle) { closeBuffer(handle); });
+ 			playing->m_bufferHandle = playSample(playing->m_audioEventRTS, playing);
+ 
+ 			// If we don't have a file now, then we should drop to the stopped status so that 
+@@ -1675,7 +1681,8 @@ void OpenALAudioManager::notifyOfAudioCompletion(UnsignedInt audioCompleted, Uns
+ 			}
+ 		}
+ 		else if (playing->m_type == PAT_3DSample) {
+-			closeBuffer(playing->m_bufferHandle);	// close it so as not to leak it.
++			releaseOpenALBufferLease(playing->m_source, playing->m_bufferHandle,
++				[this](ALuint handle) { closeBuffer(handle); });
+ 			playing->m_bufferHandle = playSample3D(playing->m_audioEventRTS, playing);
+ 
+ 			// If we don't have a file now, then we should drop to the stopped status so that 
+@@ -2901,8 +2908,8 @@ Real OpenALAudioManager::getEffectiveVolume(AudioEventRTS* event) const
+ //-------------------------------------------------------------------------------------------------
+ Bool OpenALAudioManager::startNextLoop(PlayingAudio* looping)
+ {
+-	closeBuffer(looping->m_bufferHandle);
+-	looping->m_bufferHandle = 0;
++	releaseOpenALBufferLease(looping->m_source, looping->m_bufferHandle,
++		[this](ALuint handle) { closeBuffer(handle); });
+ 
+ 	if (looping->m_requestStop) {
+ 		return false;
+diff --git a/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALBufferLease.h b/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALBufferLease.h
+new file mode 100644
+index 0000000..3b56c62
+--- /dev/null
++++ b/Core/GameEngineDevice/Source/OpenALAudioDevice/OpenALBufferLease.h
+@@ -0,0 +1,16 @@
++#pragma once
++#include <AL/al.h>
++
++// GeneralsX @bugfix Codex 16/10/2026 Detach the device reference before releasing cache ownership.
++// Stopped OpenAL sources still retain AL_BUFFER. Loading the next portion can
++// evict the old cache entry, so it must already be detached at that boundary.
++template <class CloseBuffer>
++inline void releaseOpenALBufferLease(ALuint source, ALuint& buffer, CloseBuffer closeBuffer)
++{
++    if (source) {
++        alSourceStop(source);
++        alSourcei(source, AL_BUFFER, 0);
++    }
++    if (buffer) closeBuffer(buffer);
++    buffer = 0;
++}
 diff --git a/Core/Libraries/Source/WWVegas/WW3D2/render2dsentence.cpp b/Core/Libraries/Source/WWVegas/WW3D2/render2dsentence.cpp
 index 8211055..e23e625 100644
 --- a/Core/Libraries/Source/WWVegas/WW3D2/render2dsentence.cpp
@@ -1840,11 +2082,60 @@ index 33bd5b8..95d91d4 100644
      # Before SDL3_image build: force PNG discovery to platform-specific libpng
 diff --git a/docs/DEV_BLOG/2026-10-DIARY.md b/docs/DEV_BLOG/2026-10-DIARY.md
 new file mode 100644
-index 0000000..dac8455
+index 0000000..5c1aec8
 --- /dev/null
 +++ b/docs/DEV_BLOG/2026-10-DIARY.md
-@@ -0,0 +1,232 @@
+@@ -0,0 +1,281 @@
 +# Development Diary — October 2026
++
++## 2026-10-16: Release audio resources before context shutdown
++
++- Stop active audio and destroy the cache while the OpenAL context is current;
++  then close the device/context. Previously cache deletion ran after the context
++  was cleared, where SDK alDeleteBuffers cannot release retained PCM.
++- A separate fixture compiles the exact production destructor/closeDevice bodies
++  and current cache with real SDK OpenAL. Current ordering passes eight checks;
++  old methods with the same cache fail four cleanup/PCM/device checks.
++- This is a shutdown fix; active-game ownership and the real-game soak candidate
++  are otherwise unchanged. WebAudio plumbing remains controlled in the fixture.
++
++## 2026-10-16: Add temporary OpenAL allocation snapshots
++
++- Under the existing OFF-by-default gates, sample main-thread OpenAL counts,
++  actual WebAudio float32 bytes, unreferenced buffers and pending AL error at
++  30-second cadence. Never capture buffer objects/identities or clear AL errors.
++- This distinguishes PCM retention from WASM/allocator memory in the next
++  same-mission real-game comparison. No per-frame resource-table scan is added.
++
++## 2026-10-16: Account resident audio storage in the cache budget
++
++- Charge decoded PCM instead of replacing its size with compressed file bytes.
++  Emscripten OpenAL stores WebAudio float32 samples, so account that expansion
++  for 8/16-bit input. Reject entries which cannot fit the budget before adding
++  their charge, preventing overflow and unnecessary eviction.
++- Real SDK OpenAL regression verifies 8/16-bit decoded buffer sizes and actual
++  WebAudio float32 storage/cache charges, separately from ownership tests.
++
++## 2026-10-16: Repair OpenAL cache ownership and sample transitions
++
++- The real Chrome heap retained about 1.19 GB in 4,750 OpenAL audio buffers;
++  4,702 had zero source references. New cache entries incorrectly started with
++  zero leases, allowing active eviction to forget a buffer after OpenAL rejected
++  deletion, and first-close counters could unsigned-wrap.
++- Admit the first lease only after decode/budget success, guard unmatched closes,
++  and retain ownership/accounting when actual buffer deletion fails. Keep the
++  cache entry available during reentrant source cleanup.
++- Stop and detach old sample buffers before closing cache leases at all loop
++  and attack/sound/decay transitions; stopped sources still retain AL_BUFFER.
++- The actual production cache linked with SDK OpenAL reproduces failures on the
++  baseline and passes 17 ownership/transition/deletion checks after the fix.
++  Post-fix real-game memory trend remains to be validated.
++
++## 2026-10-16: Clarify diagnostic provenance and removal
++
++- Attribute browser-main pointer callbacks to SDL's existing Emscripten backend,
++  including ordinary unlocked input. Clarify that removal must include the old
++  baseline collector instead of reverting OFF gates into always-enabled code.
 +
 +## 2026-10-16: Preserve actual font-load error output
 +
@@ -2078,10 +2369,10 @@ index 0000000..dac8455
 +tests and six Node tests pass. Campaign completion and multiplayer are untested.
 diff --git a/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md b/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md
 new file mode 100644
-index 0000000..02c30c8
+index 0000000..5af4678
 --- /dev/null
 +++ b/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,133 @@
 +# Browser input freeze investigation — 16 October 2026
 +
 +## Failure boundary and mechanism
@@ -2093,9 +2384,11 @@ index 0000000..02c30c8
 +
 +The browser build used `SDL_PTHREADS=OFF`, SDL's Emscripten default even with
 +compiler `-pthread`. This selects `SDL_THREADS_DISABLED` and no-op mutexes.
-+The custom Pointer Lock bridge installs callbacks on the browser main thread
-+which call SDL's pointer handler directly, while `PROXY_TO_PTHREAD` runs game
-+polling on a worker. The shared queue therefore lacked synchronization. SDL's
++SDL's Emscripten backend installs pointer callbacks on the browser main thread
++(`Emscripten_set_pointer_event_callbacks`); these call its WASM pointer handler
++directly, while `PROXY_TO_PTHREAD` runs game polling on a worker. This path also
++exists without Pointer Lock. The custom cursor/Pointer Lock integration uses
++that existing SDL path; it did not introduce these direct callbacks. The shared queue therefore lacked synchronization. SDL's
 +thread identity, TLS and error buffers also used the threadless backend.
 +Keyboard callback proxying can differ; direct pointer callbacks alone establish
 +the unsafe concurrency.
@@ -2179,10 +2472,40 @@ index 0000000..02c30c8
 +already-open versions cannot be rewritten remotely: server rejection blocks
 +writes, and reload closes their old collector lifecycle.
 +
-+See the wrapper hosting guide for the opt-in loopback collector and exact
-+shutdown/removal commands. Revert dedicated temporary telemetry commits while
-+retaining permanent logging, WebGL and SDL synchronization fixes. Rebuild SDL
-+from fresh dependency sources after removing the maintained patch.
++See the wrapper hosting guide for opt-in collection and exact shutdown/removal
++commands. Remove the complete temporary overlay, including the original
++collector/probes preserved in the pre-existing baseline; blindly reverting the
++OFF-gate commits would restore that old always-enabled collector. Keep gates
++OFF until all probes/hooks/routes are removed together. Retain permanent
++logging, WebGL and SDL synchronization fixes, and rebuild SDL from fresh
++dependency sources after removing its maintained diagnostics patch.
++
++
++## Follow-up: actual OpenAL heap retention
++
++The first real-game candidate retained approximately 1.19 GB across 4,750
++OpenAL PCM buffers. Offline heap analysis found 4,702 zero-reference buffers
++holding more than 99.3% of those PCM bytes; active references held about 7.21 MiB.
++This identifies orphaned audio storage independently of the SDL queue race or
++WebGL table capacity. The source cache admitted new buffers with zero playback
++leases. Eviction could then skip source cleanup, fail actual OpenAL deletion,
++and erase the only cache handle. First-close counters could also unsigned-wrap.
++Stopped sources retained AL_BUFFER across loop/portion transitions after the
++cache lease had already been closed, allowing another failed-deletion path.
++
++Permanent audio changes initialize admitted leases, guard unmatched closes,
++retain entries/accounting when deletion is rejected, and detach sources before
++releasing loop/portion cache ownership. A separate change charges decoded PCM,
++including WebAudio float32 expansion, instead of compressed file bytes. The
++actual production cache linked against SDK OpenAL fails on baseline ownership
++and pre-accounting revisions and passes after the fixes. The fixture stubs only
++file/FFmpeg input and AudioContext plumbing, not OpenAL refcount/deletion rules.
++
++Temporary snapshots now include live AL buffers/sources, actual float32 PCM
++bytes, zero-reference buffer counts and the pending AL error without clearing
++it. They scan numeric resource metadata only once per 30 seconds. The post-fix
++same-mission memory trend must be measured before claiming sustained-memory
++stability; no speculative GL instrumentation or queue recovery was added.
 diff --git a/resources/gitinfo/git_watcher.cmake b/resources/gitinfo/git_watcher.cmake
 index 40ae042..4ce5f09 100644
 --- a/resources/gitinfo/git_watcher.cmake

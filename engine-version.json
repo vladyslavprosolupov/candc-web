@@ -2,7 +2,7 @@
   "origin": "https://github.com/Lolendor/Generals-WebAssembly.git",
   "upstreamCommit": "2f564cd6095485e1303335e516b9449fd8c041f3",
   "baselineCommit": "8a1246dba0a239bfdf84dfc008af54e3fbd42b6c",
-  "currentCommit": "c460d7cd864b18c7c17849f6cdd1b64b7b06393b",
+  "currentCommit": "315905463781b96e363a71eac5d12c778cf5f707",
   "baselineNote": "Pre-existing deployed launcher, renderer, input and diagnostic work; not an input-freeze fix.",
   "sourcePatch": "patches/generals-local.patch"
 }
