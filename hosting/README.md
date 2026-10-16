@@ -375,8 +375,17 @@ Historical cache code fails ownership checks; the pre-accounting fix fails four
 residency/admission checks. A separate shutdown fixture extracts the exact
 production manager destructor/closeDevice bodies and uses the same actual
 cache/SDK AL: current ordering passes eight checks; old methods fail four by
-retaining PCM/device references after context shutdown. Current post-fix real-game heap comparison is still
-in progress; source reports do not claim long-session stability before it ends.
+retaining PCM/device references after context shutdown.
+
+The repaired Chrome candidate `a1d919cfc1b8` ran about 20 minutes on one page,
+including more than 12 minutes on `GC_TankGeneral`. Stored same-map samples
+through 11:59:27 UTC showed JS heap 65.5–188.4 MiB including startup (last
+96.8 MiB), actual AL float32 storage 14.391–14.974 MiB (last 14.644 MiB), and no
+SDL enqueue failures or queue invariant errors. Simulation and manual input
+continued. This is a bounded comparison against the earlier same-map heap
+growth, not a guarantee for all longer sessions. Final binary `e8385a5e5b0b`
+adds only the separately tested shutdown-order fix; active behavior is unchanged.
+A final startup/input smoke is required before publishing.
 
 A default-OFF engine build independently omits the generated telemetry bridge
 and both SDL probe symbols while retaining real pthread synchronization.

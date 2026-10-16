@@ -2082,11 +2082,21 @@ index 33bd5b8..95d91d4 100644
      # Before SDL3_image build: force PNG discovery to platform-specific libpng
 diff --git a/docs/DEV_BLOG/2026-10-DIARY.md b/docs/DEV_BLOG/2026-10-DIARY.md
 new file mode 100644
-index 0000000..5c1aec8
+index 0000000..885aaa8
 --- /dev/null
 +++ b/docs/DEV_BLOG/2026-10-DIARY.md
-@@ -0,0 +1,281 @@
+@@ -0,0 +1,291 @@
 +# Development Diary — October 2026
++
++## 2026-10-16: Validate the repaired game in Chrome
++
++- Audio-fixed candidate a1d919cfc1b8 ran about 20 minutes on one page, including
++  more than 12 minutes on GC_TankGeneral. Same-map JS heap stayed 65.5–188.4 MiB
++  including startup (last 96.8 MiB), AL PCM stayed 14.391–14.974 MiB, and SDL
++  enqueue failures/queue invariant errors stayed zero while input worked.
++- The final e8385a5e5b0b binary differs only by the separately tested shutdown
++  order. Record the bounded session evidence without claiming all longer
++  sessions are proven; final startup/input smoke remains the deployment gate.
 +
 +## 2026-10-16: Release audio resources before context shutdown
 +
@@ -2369,10 +2379,10 @@ index 0000000..5c1aec8
 +tests and six Node tests pass. Campaign completion and multiplayer are untested.
 diff --git a/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md b/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md
 new file mode 100644
-index 0000000..5af4678
+index 0000000..b2a7be5
 --- /dev/null
 +++ b/docs/WORKDIR/reports/2026-10-16_BROWSER_INPUT_INVESTIGATION.md
-@@ -0,0 +1,133 @@
+@@ -0,0 +1,150 @@
 +# Browser input freeze investigation — 16 October 2026
 +
 +## Failure boundary and mechanism
@@ -2477,7 +2487,7 @@ index 0000000..5af4678
 +collector/probes preserved in the pre-existing baseline; blindly reverting the
 +OFF-gate commits would restore that old always-enabled collector. Keep gates
 +OFF until all probes/hooks/routes are removed together. Retain permanent
-+logging, WebGL and SDL synchronization fixes, and rebuild SDL from fresh
++logging, WebGL, SDL synchronization and OpenAL lifetime/residency fixes, and rebuild SDL from fresh
 +dependency sources after removing its maintained diagnostics patch.
 +
 +
@@ -2503,9 +2513,26 @@ index 0000000..5af4678
 +
 +Temporary snapshots now include live AL buffers/sources, actual float32 PCM
 +bytes, zero-reference buffer counts and the pending AL error without clearing
-+it. They scan numeric resource metadata only once per 30 seconds. The post-fix
-+same-mission memory trend must be measured before claiming sustained-memory
-+stability; no speculative GL instrumentation or queue recovery was added.
++it. They scan numeric resource metadata only once per 30 seconds. No speculative
++GL instrumentation or queue recovery was added.
++
++## Post-fix real-game comparison
++
++The audio-fixed Chrome candidate `a1d919cfc1b8` ran on the same local origin for
++approximately 20 minutes, including more than 12 minutes continuously on
++`GC_TankGeneral`. Stored same-map samples through 11:59:27 UTC showed JS heap
++65.5–188.4 MiB (including mission startup), last 96.8 MiB. Actual AL float32
++storage stayed 14.391–14.974 MiB, last 14.644 MiB. SDL enqueue failures and
++queue invariants remained zero, simulation advanced and manual input worked.
++This replaces the earlier same-map growth of roughly 130 MiB/minute and the
++1.19 GB orphaned PCM capture with a bounded observed interval; it does not prove
++that every longer session or other scenario is free of leaks or input stalls.
++
++The final binary `e8385a5e5b0b` adds only the separately tested shutdown-order
++fix to that soak candidate: it destroys cached audio before closing the context.
++Active-game code and telemetry are unchanged between those two builds. Final
++startup/input smoke testing is required before deployment. Default-OFF build
++checks, actual-library regressions and Pages Functions bundling also pass.
 diff --git a/resources/gitinfo/git_watcher.cmake b/resources/gitinfo/git_watcher.cmake
 index 40ae042..4ce5f09 100644
 --- a/resources/gitinfo/git_watcher.cmake
