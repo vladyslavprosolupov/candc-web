@@ -18,41 +18,69 @@ def debug_config(base, release, release_dir):
     return result
 
 
-def cloud_runtime_config(base, release):
-    """Generate only the ephemeral runtime gate after the OFF source export."""
+def verify_runtime_gate(base, release, environment):
+    """Check the predeclared Pages environment against the exact build mode."""
+    if type(release.get('diagnosticsCompiled')) is not bool or type(release.get('diagnosticsEnabled')) is not bool:
+        raise ValueError('Cloud build manifest must contain boolean diagnostics gates')
     compiled = release.get('diagnosticsCompiled') is True
     enabled = release.get('diagnosticsEnabled') is True
-    if enabled and not compiled:
-        raise ValueError('Diagnostics-enabled export requires a compiled-on engine')
+    if compiled != enabled:
+        raise ValueError('Cloud build compile/export diagnostics gates disagree')
+    override = base.get('env', {}).get(environment, {})
+    variables = override.get('vars', base.get('vars', {}))
+    runtime = variables.get('DIAGNOSTICS_ENABLED') == 'true'
+    if runtime != enabled:
+        raise ValueError('Diagnostics mismatch: ' + environment + ' runtime=' + str(runtime) +
+                         ', build/export=' + str(enabled) +
+                         '. Set both the explicit build command flag and production runtime override together')
+    return runtime
+
+
+def disabled_config(base, release_dir):
     result = json.loads(json.dumps(base))
-    result.setdefault('vars', {})['DIAGNOSTICS_ENABLED'] = 'true' if enabled else 'false'
+    result.setdefault('vars', {})['DIAGNOSTICS_ENABLED'] = 'false'
+    for environment in result.get('env', {}).values():
+        environment.setdefault('vars', {})['DIAGNOSTICS_ENABLED'] = 'false'
+    result['pages_build_output_dir'] = str(release_dir.resolve())
+    result.pop('$schema', None)
     return result
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, default=ROOT / '.local/debug-deployment/wrangler.jsonc')
-    parser.add_argument('--cloud-runtime', action='store_true', help='After export, set only the runtime gate in an ephemeral CF_PAGES=1 checkout')
+    parser.add_argument('--verify-runtime', action='store_true', help='Validate the selected Cloudflare runtime gate without changing config')
+    parser.add_argument('--requested-mode', help='Validate the requested compile mode before bootstrapping')
+    parser.add_argument('--disable', action='store_true', help='Generate an explicit OFF runtime config for all environments')
     args = parser.parse_args()
-    if args.cloud_runtime:
+    if args.verify_runtime:
         if os.environ.get('CF_PAGES') != '1':
             print('Local build: versioned runtime configuration stays unchanged')
             return
         try:
-            path = ROOT / 'wrangler.jsonc'
-            config = cloud_runtime_config(json.loads(path.read_text()),
-                                          json.loads((ROOT / 'release/build.json').read_text()))
+            branch = os.environ.get('CF_PAGES_BRANCH')
+            if not branch:
+                raise ValueError('CF_PAGES_BRANCH is required to select production or preview')
+            environment = 'production' if branch == 'main' else 'preview'
+            if args.requested_mode is not None:
+                import runpy
+                enabled = runpy.run_path(str(ROOT / 'scripts/write-build-manifest.py'))['cmake_enabled'](args.requested_mode)
+                release = {'diagnosticsCompiled': enabled, 'diagnosticsEnabled': enabled}
+            else:
+                release = json.loads((ROOT / 'release/build.json').read_text())
+            runtime = verify_runtime_gate(json.loads((ROOT / 'wrangler.jsonc').read_text()), release, environment)
         except (OSError, ValueError) as error:
             parser.error(str(error))
-        path.write_text(json.dumps(config, indent=2) + '\n')
-        print('Ephemeral Cloudflare runtime diagnostics: ' + config['vars']['DIAGNOSTICS_ENABLED'])
+        phase = 'Requested' if args.requested_mode is not None else 'Compiled/exported'
+        print(phase + ' Cloudflare diagnostics gates verified: ' + environment + '=' + str(runtime))
         return
     output = args.output.resolve()
     if not output.is_relative_to(ROOT / '.local'):
         parser.error('Temporary deployment config must stay inside ignored .local/')
     try:
-        config = debug_config(json.loads((ROOT / 'wrangler.jsonc').read_text()),
-                              json.loads((ROOT / 'release/build.json').read_text()), ROOT / 'release')
+        base = json.loads((ROOT / 'wrangler.jsonc').read_text())
+        config = disabled_config(base, ROOT / 'release') if args.disable else debug_config(
+            base, json.loads((ROOT / 'release/build.json').read_text()), ROOT / 'release')
     except (OSError, ValueError) as error:
         parser.error(str(error))
     output.parent.mkdir(parents=True, exist_ok=True)

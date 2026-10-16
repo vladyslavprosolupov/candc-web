@@ -15,18 +15,17 @@ asset archive, R2 credential or precompiled game binary is needed for the build.
 Only the separate configured R2 download supplies players' game data.
 
 Build defaults leave temporary diagnostics OFF. During the current investigation
-set `GX_WEB_DIAGNOSTICS=1` explicitly in the production build environment and
-`DIAGNOSTICS_ENABLED=true` in the Functions runtime; normal builds omit these
-opt-ins. Keep the existing Access policy, allowed identities and private
+use the explicit production build-command flag and temporary runtime override;
+normal builds omit these opt-ins. Keep the existing Access policy, allowed identities and private
 diagnostics bucket binding. `BUILD_JOBS` controls both engine and FFmpeg jobs
 (cloud default 2).
 
-Only when Cloudflare sets `CF_PAGES=1`, the final build step derives the
-Functions runtime gate from the verified exported build manifest and writes
-that gate into the ephemeral checkout's `wrangler.jsonc`. This runs after source
-export, so the downloadable source retains the default-OFF configuration. Local
-builds leave the versioned runtime configuration unchanged. The deployed Git
-build must verify that Pages consumes this generated runtime setting. The cold build must complete within Pages' build timeout;
+For Cloudflare builds, CI validates the requested diagnostics mode against the
+selected predeclared Pages runtime environment before downloading tools, then
+checks the actual compile/export manifest after the build. It never rewrites
+Wrangler configuration. The current investigation has a separate temporary
+`env.production` opt-in; base/local/preview gates stay OFF. Remove that production
+override and the explicit ON build-command prefix when the investigation ends. The cold build must complete within Pages' build timeout;
 cache availability must not substitute for verifying the source compilation.
 
 ## Download package → local import (default)
@@ -118,7 +117,21 @@ Keep the project and custom domain so browser saves retain the same origin.
 | Output directory | `release` |
 | Node / Python build environment | `NODE_VERSION=22.16.0`, `PYTHON_VERSION=3.12.8` |
 | Compilation concurrency | `BUILD_JOBS=2` |
-| Current temporary investigation only | `GX_WEB_DIAGNOSTICS=ON`, runtime `DIAGNOSTICS_ENABLED=true` |
+| Current temporary investigation only | Explicit ON command below; `env.production.vars.DIAGNOSTICS_ENABLED=true` |
+
+Current temporary build command (main is the production branch; previews stay OFF):
+
+```sh
+if [ "$CF_PAGES_BRANCH" = main ]; then GX_WEB_DIAGNOSTICS=ON BUILD_JOBS=2 npm run build:cloud; else GX_WEB_DIAGNOSTICS=OFF BUILD_JOBS=2 npm run build:cloud; fi
+```
+
+Use the build command for these compile flags. Runtime variables managed by
+Wrangler are not a reliable substitute for build-only settings. `.node-version`
+and `.python-version` pin the initial Cloudflare tools; the SDK pins its own
+compiler/tool runtime. CI prints selected mode, concurrency and tool versions.
+Compiler output stays in ignored `.local/engine-build.log`; CI emits progress
+heartbeats and preserves the real exit code, error lines and final context on
+failure, keeping warning storms from truncating the final build evidence.
 
 The source build downloads no game archives and needs no R2 credentials.
 The existing private diagnostics binding and Access configuration remain
@@ -246,8 +259,11 @@ To opt in, compile with `GX_WEB_DIAGNOSTICS=1 bash scripts/build.sh`, export
 with `npm run export -- --diagnostics`, then generate an ignored deployment
 config with `python3 scripts/diagnostics-deployment-config.py`. The generated
 config sets `DIAGNOSTICS_ENABLED` to the exact string `true` for the same existing
-Pages project. The versioned base config explicitly sets it to `false`. Both the client
-export and server gate must be enabled. This uses the same existing project;
+Pages project. The versioned base config explicitly sets it to `false`; the current
+investigation additionally has a dedicated temporary production override set to
+`true`. It repeats the unchanged Access vars and private R2 binding because Pages
+requires all non-inheritable bindings when overriding vars. Base/local/preview
+remain OFF. Both the client export and server gate must be enabled. This uses the same existing project;
 it does not change Access policies, permitted identities or storage access.
 Default/missing server configuration rejects POSTs with HTTP 410 before
 authentication or storage. Authenticated players can read
@@ -387,12 +403,14 @@ smoke testing covers startup/intro/menu, not reproduction of the original freeze
 
 ### Disable and remove the temporary investigation code
 
-1. Disable the Git build opt-in (`GX_WEB_DIAGNOSTICS=OFF`) so later automatic
-   builds cannot re-enable collection. Deploy the base `wrangler.jsonc` with
-   `DIAGNOSTICS_ENABLED=false` first; the manual fallback can deploy this gate
-   without waiting for a new engine compile. It rejects new writes; enabled
-   current collectors tear down after their next configuration poll or HTTP 410.
-   Reload older collector tabs.
+1. Remove the explicit ON build-command prefix (or set `GX_WEB_DIAGNOSTICS=OFF`)
+   and remove/set false the temporary production runtime override. CI rejects
+   mismatched compile/runtime gates. To stop current writes without recompiling,
+   generate an all-environments OFF config using
+   `python3 scripts/diagnostics-deployment-config.py --disable`, then use the
+   restore-safe manual deployment command above. It rejects new writes; current
+   collectors tear down after their next config poll or HTTP 410. Reload older
+   tabs. Keep future Git settings OFF so another push cannot re-enable collection.
 2. Build with `GX_WEB_DIAGNOSTICS=OFF bash scripts/build.sh` and run
    `npm run export` without `--diagnostics`. Verify the build manifest is false,
    the generated engine has no `window.gxDiagnostics.engine` bridge, and SDL
@@ -400,8 +418,9 @@ smoke testing covers startup/intro/menu, not reproduction of the original freeze
    The manifest binds its compile mode to the exact successful WASM hash;
    `--diagnostics` rejects a compiled-off or stale binary.
 3. Remove the complete temporary overlay in both repos while retaining permanent
-   logging, WebGL ownership/cache, SDL pthread and OpenAL ownership, residency
-   and shutdown fixes. The preserved baseline
+   logging, WebGL ownership/cache, SDL pthread and page-fullscreen guard, and
+   OpenAL ownership, residency and shutdown fixes. Keep the permanent
+   `sdl3-page-fullscreen.patch` and its separate apply hook. The preserved baseline
    already contained an always-enabled collector: **do not blindly revert the
    OFF-gate commits**, which would restore that behavior. Keep both gates OFF
    until the original and added probes are removed together. Remove diagnostics
@@ -419,7 +438,7 @@ permanent fixes; no recovery watchdog is installed.
 
 ### Current local regression evidence
 
-The full suite passes 16 Python and 47 Node tests. Actual compiled SDL tests
+The full suite passes 21 Python and 50 Node tests. Actual compiled SDL tests
 reproduce the old orphaned-queue race; corrected threaded ON and default-OFF
 libraries each deliver 524,288 ordered raw-pthread events. The permanent public
 SDL fixture does not depend on the removable diagnostics helpers:

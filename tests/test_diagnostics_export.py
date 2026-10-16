@@ -70,17 +70,32 @@ class DiagnosticsExportTests(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 export_site.validate_diagnostics_build(build, True)
 
-    def test_cloud_runtime_gate_keeps_project_security_and_source_defaults(self):
+    def test_cloud_runtime_gate_checks_production_preview_and_mismatch(self):
         base = json.loads((ROOT / 'wrangler.jsonc').read_text())
-        for enabled in [False, True]:
-            release = {'diagnosticsCompiled': enabled, 'diagnosticsEnabled': enabled}
-            result = deployment_config.cloud_runtime_config(base, release)
-            expected = json.loads(json.dumps(base))
-            expected['vars']['DIAGNOSTICS_ENABLED'] = 'true' if enabled else 'false'
-            self.assertEqual(result, expected)
-            self.assertEqual(base['vars']['DIAGNOSTICS_ENABLED'], 'false')
+        base['env'] = {'production': {'vars': dict(base['vars'], DIAGNOSTICS_ENABLED='true')}}
+        enabled = {'diagnosticsCompiled': True, 'diagnosticsEnabled': True}
+        disabled = {'diagnosticsCompiled': False, 'diagnosticsEnabled': False}
+        self.assertTrue(deployment_config.verify_runtime_gate(base, enabled, 'production'))
+        self.assertFalse(deployment_config.verify_runtime_gate(base, disabled, 'preview'))
+        self.assertEqual(base['vars']['DIAGNOSTICS_ENABLED'], 'false')
         with self.assertRaises(ValueError):
-            deployment_config.cloud_runtime_config(base, {'diagnosticsCompiled': False, 'diagnosticsEnabled': True})
+            deployment_config.verify_runtime_gate(base, disabled, 'production')
+        with self.assertRaises(ValueError):
+            deployment_config.verify_runtime_gate(base, enabled, 'preview')
+        with self.assertRaises(ValueError):
+            deployment_config.verify_runtime_gate(base, {'diagnosticsCompiled': False, 'diagnosticsEnabled': True}, 'production')
+
+    def test_explicit_disable_config_turns_off_all_overrides_without_security_changes(self):
+        base = json.loads((ROOT / 'wrangler.jsonc').read_text())
+        base['env'] = {'production': {'vars': dict(base['vars'], DIAGNOSTICS_ENABLED='true'),
+                                   'r2_buckets': base['r2_buckets']}}
+        result = deployment_config.disabled_config(base, ROOT / 'release')
+        self.assertEqual(result['vars']['DIAGNOSTICS_ENABLED'], 'false')
+        self.assertEqual(result['env']['production']['vars']['DIAGNOSTICS_ENABLED'], 'false')
+        self.assertEqual(result['r2_buckets'], base['r2_buckets'])
+        self.assertEqual(result['env']['production']['r2_buckets'], base['r2_buckets'])
+        self.assertEqual(result['vars']['ACCESS_AUD'], base['vars']['ACCESS_AUD'])
+        self.assertEqual(base['env']['production']['vars']['DIAGNOSTICS_ENABLED'], 'true')
 
 
 if __name__ == '__main__':

@@ -78,7 +78,7 @@ def main():
                 for path in (ROOT / folder).rglob('*'):
                     if path.is_file() and '__pycache__' not in path.parts:
                         tar.add(path, arcname='generals-web/' + str(path.relative_to(ROOT)), recursive=False)
-            for name in ['README.md', 'package.json', 'package-lock.json', 'wrangler.jsonc', 'engine-version.json', 'build-lock.json']:
+            for name in ['README.md', 'package.json', 'package-lock.json', 'wrangler.jsonc', 'engine-version.json', 'build-lock.json', '.node-version', '.python-version']:
                 tar.add(ROOT / name, arcname='generals-web/' + name)
             # Bundled dependency source and notices; omit checkout metadata and build outputs.
             for dep in (ENGINE / 'build/emscripten/_deps').glob('*-src'):

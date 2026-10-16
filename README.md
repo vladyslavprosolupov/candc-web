@@ -54,15 +54,15 @@ bootstraps, installs the locked npm packages, compiles the real engine, runs
 tests against the generated bridge and exports `release/`. Normal builds keep
 temporary diagnostics OFF. Only the current investigation opts in with
 `GX_WEB_DIAGNOSTICS=1 npm run build:cloud`; its separate server gate must also
-be explicitly enabled in the deployment settings. `BUILD_JOBS` bounds engine
+be explicitly enabled in the production Wrangler override. `BUILD_JOBS` bounds engine
 and FFmpeg compilation (cloud default: 2).
 
-Only when Cloudflare sets `CF_PAGES=1`, the final build step derives the
-Functions runtime gate from the verified exported build manifest and writes
-that gate into the ephemeral checkout's `wrangler.jsonc`. This runs after source
-export, so the downloadable source retains the default-OFF configuration. Local
-builds leave the versioned runtime configuration unchanged. The deployed Git
-build must verify that Pages consumes this generated runtime setting.
+For Cloudflare builds, CI validates the requested diagnostics mode against the
+selected predeclared Pages runtime environment before downloading tools, then
+checks the actual compile/export manifest after the build. It never rewrites
+Wrangler configuration. The current investigation has a separate temporary
+`env.production` opt-in; base/local/preview gates stay OFF. Remove that production
+override and the explicit ON build-command prefix when the investigation ends.
 
 Optional local asset packing is separate from the hosting build:
 
