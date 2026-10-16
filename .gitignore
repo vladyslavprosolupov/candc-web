@@ -1,0 +1,13 @@
+.tools/
+logs/
+.local/
+node_modules/
+.DS_Store
+__pycache__/
+*.pyc
+
+release/
+
+# Independently versioned engine checkout.
+engine/
+.wrangler/

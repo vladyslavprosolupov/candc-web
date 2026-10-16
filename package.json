@@ -1,0 +1,19 @@
+{
+  "name": "generals-web-local",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "python3 scripts/serve.py",
+    "start": "python3 scripts/serve.py",
+    "build": "bash scripts/build.sh",
+    "assets": ".tools/python/bin/python scripts/import-assets.py",
+    "test": "python3 -m unittest discover -s tests && node --test tests/*.test.cjs",
+    "test:renderer:build": "python3 scripts/build-render-test.py",
+    "pack:archive": "python3 scripts/pack-archive.py",
+    "export": "python3 scripts/export-site.py",
+    "preview": "python3 scripts/serve.py --directory release --port 8095"
+  },
+  "dependencies": {
+    "jose": "^6.2.12"
+  }
+}
