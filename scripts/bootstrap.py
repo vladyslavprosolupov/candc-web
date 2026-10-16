@@ -29,7 +29,7 @@ def prepare_engine(root, version):
     expected = version['sourceTree']
     if engine.exists():
         if git(engine, 'write-tree') != expected or subprocess.run(
-                ['git', '-C', str(engine), 'diff-files', '--quiet']).returncode:
+                ['git', '-C', str(engine), 'diff', '--quiet']).returncode:
             raise ValueError('Existing engine differs from engine-version.json; preserve it and use a clean checkout')
         return
     (root / '.tools').mkdir(exist_ok=True)

@@ -36,6 +36,12 @@ class BootstrapTests(unittest.TestCase):
             self.assertEqual((root / 'engine/new.txt').read_text(), 'new source\n')
             self.assertIn('new.txt', bootstrap.git(root / 'engine', 'ls-files'))
             bootstrap.prepare_engine(root, version)
+            # Build caches may preserve source bytes but change filesystem metadata.
+            (root / 'engine/existing.txt').touch()
+            blob = bootstrap.git(root / 'engine', 'rev-parse', ':existing.txt')
+            bootstrap.git(root / 'engine', 'update-index', '--cacheinfo',
+                          '100644,' + blob + ',existing.txt')
+            bootstrap.prepare_engine(root, version)
             (root / 'engine/existing.txt').write_text('developer changes\n')
             with self.assertRaises(ValueError):
                 bootstrap.prepare_engine(root, version)
